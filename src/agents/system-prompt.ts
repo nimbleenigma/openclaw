@@ -17,6 +17,7 @@ import {
   buildLimitedBootstrapPromptLines,
 } from "./bootstrap-prompt.js";
 import type { ResolvedTimeFormat } from "./date-time.js";
+import { parseIdentityMarkdown } from "./identity-file.js";
 import type { EmbeddedContextFile } from "./pi-embedded-helpers.js";
 import type {
   EmbeddedFullAccessBlockedReason,
@@ -55,6 +56,8 @@ const CONTEXT_FILE_ORDER = new Map<string, number>([
 const DYNAMIC_CONTEXT_FILE_BASENAMES = new Set(["heartbeat.md"]);
 const DEFAULT_HEARTBEAT_PROMPT_CONTEXT_BLOCK =
   "Default heartbeat prompt:\n`Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.`";
+const DEFAULT_IDENTITY_LINE = "You are a personal assistant running inside OpenClaw.";
+
 function normalizeContextFilePath(pathValue: string): string {
   return pathValue.trim().replace(/\\/g, "/");
 }
@@ -91,6 +94,24 @@ function sortContextFilesForPrompt(contextFiles: EmbeddedContextFile[]): Embedde
     }
     return aPath.localeCompare(bPath);
   });
+}
+
+function resolveIdentityLine(contextFiles: EmbeddedContextFile[]): string {
+  const identityFile = contextFiles.find((file) => {
+    if (typeof file.path !== "string" || !file.path.trim()) {
+      return false;
+    }
+    return getContextFileBasename(file.path) === "identity.md";
+  });
+  if (!identityFile) {
+    return DEFAULT_IDENTITY_LINE;
+  }
+  const parsed = parseIdentityMarkdown(identityFile.content);
+  if (!parsed.creature) {
+    return DEFAULT_IDENTITY_LINE;
+  }
+  const creature = sanitizeForPromptLiteral(parsed.creature);
+  return `You are ${creature} running inside OpenClaw.`;
 }
 
 function buildProjectContextSection(params: {
@@ -703,14 +724,15 @@ export function buildAgentSystemPrompt(params: {
     readToolName,
   });
   const workspaceNotes = (params.workspaceNotes ?? []).map((note) => note.trim()).filter(Boolean);
+  const identityLine = resolveIdentityLine(params.contextFiles ?? []);
 
   // For "none" mode, return just the basic identity line
   if (promptMode === "none") {
-    return "You are a personal assistant running inside OpenClaw.";
+    return identityLine;
   }
 
   const lines = [
-    "You are a personal assistant running inside OpenClaw.",
+    identityLine,
     "",
     "## Tooling",
     "Tool availability (filtered by policy):",
