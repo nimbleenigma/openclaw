@@ -1,0 +1,37 @@
+{
+  "id": "watches",
+  "enabledByDefault": true,
+  "name": "Watches",
+  "description": "Temporary model and URL watches that notify the originating chat when they trigger.",
+  "commandAliases": [
+    {
+      "name": "watch",
+      "kind": "runtime-slash"
+    },
+    {
+      "name": "watches",
+      "kind": "runtime-slash"
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "maxActivePerOwner": {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "defaultIntervalSeconds": {
+        "type": "number",
+        "minimum": 60,
+        "maximum": 86400
+      },
+      "defaultExpiryHours": {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 168
+      }
+    }
+  }
+}

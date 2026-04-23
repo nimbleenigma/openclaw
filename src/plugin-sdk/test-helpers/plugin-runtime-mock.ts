@@ -12,7 +12,7 @@ import {
 import type { PluginRuntime } from "../testing.js";
 
 const DEFAULT_PROVIDER = "openai";
-const DEFAULT_MODEL = "gpt-5.5";
+const DEFAULT_MODEL = "gpt-5.4";
 
 type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends (...args: never[]) => unknown
@@ -169,6 +169,10 @@ export function createPluginRuntimeMock(overrides: DeepPartial<PluginRuntime> = 
     system: {
       enqueueSystemEvent: vi.fn() as unknown as PluginRuntime["system"]["enqueueSystemEvent"],
       requestHeartbeatNow: vi.fn() as unknown as PluginRuntime["system"]["requestHeartbeatNow"],
+      notifyCapturedTarget: vi.fn(async () => ({
+        delivered: true as const,
+        via: "direct" as const,
+      })) as unknown as PluginRuntime["system"]["notifyCapturedTarget"],
       runHeartbeatOnce: vi.fn(async () => ({
         status: "ran" as const,
         durationMs: 0,

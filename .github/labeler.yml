@@ -285,6 +285,11 @@
   - changed-files:
       - any-glob-to-any-file:
           - "extensions/webhooks/**"
+"extensions: watches":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "extensions/watches/**"
+          - "docs/tools/watches.md"
 "extensions: device-pair":
   - changed-files:
       - any-glob-to-any-file:

@@ -4,8 +4,10 @@ read_when:
   - You want to understand what tools OpenClaw provides
   - You need to configure, allow, or deny tools
   - You are deciding between built-in tools, skills, and plugins
-title: "Tools and plugins"
+title: "Tools and Plugins"
 ---
+
+# Tools and Plugins
 
 Everything the agent does beyond generating text happens through **tools**.
 Tools are how the agent reads files, runs commands, browses the web, sends
@@ -110,6 +112,7 @@ Plugins can register additional tools. Some examples:
 - [Music Generation](/tools/music-generation) — shared `music_generate` tool with workflow-backed providers
 - [OpenProse](/prose) — markdown-first workflow orchestration
 - [Tokenjuice](/tools/tokenjuice) — compact noisy `exec` and `bash` tool results
+- [Watches](/tools/watches) — temporary model and URL watches that notify the originating chat
 
 ## Tool configuration
 

@@ -13,11 +13,17 @@ const runHeartbeatOnceInternal = createLazyRuntimeMethod(
   loadHeartbeatRunnerRuntime,
   (runtime) => runtime.runHeartbeatOnce,
 );
+const loadNotificationRuntime = createLazyRuntimeModule(() => import("./runtime-notifications.js"));
+const notifyCapturedTarget = createLazyRuntimeMethod(
+  loadNotificationRuntime,
+  (runtime) => runtime.notifyCapturedTarget,
+);
 
 export function createRuntimeSystem(): PluginRuntime["system"] {
   return {
     enqueueSystemEvent,
     requestHeartbeatNow,
+    notifyCapturedTarget: (params) => notifyCapturedTarget(params),
     runHeartbeatOnce: (opts?: RunHeartbeatOnceOptions) => {
       // Destructure to forward only the plugin-safe subset; prevent cfg/deps injection at runtime.
       const { reason, agentId, sessionKey, heartbeat } = opts ?? {};

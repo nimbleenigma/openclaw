@@ -77,6 +77,13 @@ export type RunHeartbeatOnceOptions = {
   heartbeat?: { target?: string };
 };
 
+export type RuntimeNotificationTarget =
+  import("./runtime-notifications.js").RuntimeNotificationTarget;
+export type RuntimeNotifyCapturedTargetParams =
+  import("./runtime-notifications.js").RuntimeNotifyCapturedTargetParams;
+export type RuntimeNotifyCapturedTargetResult =
+  import("./runtime-notifications.js").RuntimeNotifyCapturedTargetResult;
+
 /** Core runtime helpers exposed to trusted native plugins. */
 export type PluginRuntimeCore = {
   version: string;
@@ -149,6 +156,9 @@ export type PluginRuntimeCore = {
   system: {
     enqueueSystemEvent: typeof import("../../infra/system-events.js").enqueueSystemEvent;
     requestHeartbeatNow: typeof import("../../infra/heartbeat-wake.js").requestHeartbeatNow;
+    notifyCapturedTarget: (
+      params: RuntimeNotifyCapturedTargetParams,
+    ) => Promise<RuntimeNotifyCapturedTargetResult>;
     /**
      * Run a single heartbeat cycle immediately (bypassing the coalesce timer).
      * Accepts an optional `heartbeat` config override so callers can force
