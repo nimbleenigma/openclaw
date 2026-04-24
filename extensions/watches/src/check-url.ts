@@ -13,6 +13,17 @@ const TEXTUAL_CONTENT_TYPES = [
   "application/javascript",
 ];
 
+export class UrlWatchFetchError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+    readonly finalUrl?: string,
+  ) {
+    super(message);
+    this.name = "UrlWatchFetchError";
+  }
+}
+
 type FetchUrlTextParams = {
   url: string;
   timeoutMs: number;
@@ -108,6 +119,13 @@ export async function fetchUrlText(
     auditContext: "watches-url",
   });
   try {
+    if (!response.ok) {
+      throw new UrlWatchFetchError(
+        `HTTP ${response.status} fetching ${finalUrl}`,
+        response.status,
+        finalUrl,
+      );
+    }
     return {
       finalUrl,
       status: response.status,
@@ -138,7 +156,8 @@ export async function checkUrlWatch(params: {
   const canonical = `${fetched.status}\n${fetched.finalUrl}\n${fetched.text}`;
   const evaluated = evaluateTextCondition({
     condition,
-    text: canonical,
+    text: condition.type === "changed" ? canonical : fetched.text,
+    hashText: canonical,
     previousHash: params.watch.lastResultHash,
   });
   const summary = truncateSummary(

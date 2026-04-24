@@ -220,6 +220,7 @@ Bundled plugins can add more slash commands. Current bundled commands in this re
 - `/pair [qr|status|pending|approve|cleanup|notify]` manages device pairing/setup flow. See [Pairing](/channels/pairing).
 - `/phone status|arm <camera|screen|writes|all> [duration]|disarm` temporarily arms high-risk phone node commands.
 - `/voice status|list [limit]|set <voiceId|name>` manages Talk voice config. On Discord, the native command name is `/talkvoice`.
+- `/watch models <model> until available`, `/watch url <url> contains "<text>"`, `/watch url <url> matches "<regex>"`, and `/watch url <url> changed` create temporary watches. `/watches` lists active watches, `/watch show <id>` shows details, and `/watch cancel <id>` cancels one. See [Watches](/tools/watches).
 - `/card ...` sends LINE rich card presets. See [LINE](/channels/line).
 - `/codex status|models|threads|resume|compact|review|account|mcp|skills` inspects and controls the bundled Codex app-server harness. See [Codex harness](/plugins/codex-harness).
 - QQBot-only commands:

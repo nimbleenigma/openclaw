@@ -35,7 +35,8 @@ export type WatchSource = ModelWatchSource | UrlWatchSource;
 export type WatchCondition =
   | { type: "available" }
   | { type: "contains"; text: string; caseSensitive?: boolean }
-  | { type: "changed" };
+  | { type: "changed" }
+  | { type: "matches"; pattern: string; flags: string };
 
 export type WatchRecord = {
   id: string;

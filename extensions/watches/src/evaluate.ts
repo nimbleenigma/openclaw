@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { compileWatchRegex } from "./regex.js";
 import type { WatchCondition } from "./types.js";
 
 export function hashWatchResult(value: string): string {
@@ -16,9 +17,10 @@ export function truncateSummary(value: string, maxChars = 500): string {
 export function evaluateTextCondition(params: {
   condition: WatchCondition;
   text: string;
+  hashText?: string;
   previousHash?: string;
 }): { triggered: boolean; resultHash: string; summary: string } {
-  const resultHash = hashWatchResult(params.text);
+  const resultHash = hashWatchResult(params.hashText ?? params.text);
   switch (params.condition.type) {
     case "changed": {
       if (!params.previousHash) {
@@ -49,6 +51,16 @@ export function evaluateTextCondition(params: {
         summary: matched
           ? `Matched text: ${params.condition.text}`
           : `Text not found: ${params.condition.text}`,
+      };
+    }
+    case "matches": {
+      const regex = compileWatchRegex(params.condition.pattern, params.condition.flags);
+      const matched = regex.test(params.text);
+      const label = `/${params.condition.pattern}/${params.condition.flags}`;
+      return {
+        triggered: matched,
+        resultHash,
+        summary: matched ? `Matched regex: ${label}` : `Regex not matched: ${label}`,
       };
     }
     case "available":

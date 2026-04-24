@@ -128,16 +128,36 @@ describe("WatchesScheduler", () => {
 
   it("backs off transient failures and marks terminal failures", async () => {
     await withStore(async (store) => {
-      store.createWatch(createInput({ id: "w_a", now: 1_000 }));
+      store.createWatch(createInput({ id: "w_a", now: 1_000, expiresAt: 1_000_000 }));
       const runtime = createRuntime();
-      const config = { ...DEFAULT_WATCHES_CONFIG, maxConsecutiveErrors: 1 };
+      const transientScheduler = new WatchesScheduler({
+        store,
+        runtime: runtime as never,
+        cfg: {},
+        config: { ...DEFAULT_WATCHES_CONFIG, maxConsecutiveErrors: 2 },
+        claimedBy: "test-worker",
+        now: () => 1_000,
+        evaluator: async (_watch: WatchRecord) => {
+          throw new Error("network down");
+        },
+      });
+
+      await transientScheduler.tickOnce();
+
+      const transient = store.getWatch("w_a");
+      expect(transient?.status).toBe("active");
+      expect(transient?.errorCount).toBe(1);
+      expect(transient?.lastError).toBe("network down");
+      expect(transient?.nextCheckAt).toBeGreaterThan(1_000);
+      expect(runtime.system.notifyCapturedTarget).not.toHaveBeenCalled();
+
       const scheduler = new WatchesScheduler({
         store,
         runtime: runtime as never,
         cfg: {},
-        config,
+        config: { ...DEFAULT_WATCHES_CONFIG, maxConsecutiveErrors: 2 },
         claimedBy: "test-worker",
-        now: () => 1_000,
+        now: () => transient?.nextCheckAt ?? 123_000,
         evaluator: async (_watch: WatchRecord) => {
           throw new Error("network down");
         },

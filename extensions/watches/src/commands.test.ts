@@ -44,6 +44,9 @@ function createMemoryStore() {
         .filter((watch) => params?.includeAll || watch.status === "active")
         .slice(0, params?.limit ?? 50);
     },
+    getWatch(id: string): WatchRecord | undefined {
+      return watches.get(id);
+    },
     cancelWatch(params: {
       id: string;
       ownerKey?: string;
@@ -107,9 +110,51 @@ describe("watch commands", () => {
     const listed = await watchesCommand.handler(createContext("") as never);
     expect(listed.text).toContain("Active watches:");
     expect(listed.text).toContain("URL contains: hello");
+    expect(listed.text).toContain("next:");
+    expect(listed.text).toContain("last:");
   });
 
-  it("cancels only watches owned by the caller", async () => {
+  it("shows watches owned by the caller", async () => {
+    const store = createMemoryStore();
+    const [watchCommand] = createWatchesCommands({
+      api: { runtime: {} as never },
+      getStore: () => store,
+      config: DEFAULT_WATCHES_CONFIG,
+      now: () => 1_000,
+    });
+    await watchCommand.handler(createContext("models gpt-5.5 until available", "alice") as never);
+    const id = [...store.watches.keys()][0];
+    const shown = await watchCommand.handler(createContext(`show ${id}`, "alice") as never);
+    expect(shown.text).toContain(`Watch ${id}`);
+    expect(shown.text).toContain("- status: active");
+
+    const denied = await watchCommand.handler(createContext(`show ${id}`, "bob") as never);
+    expect(denied.text).toContain("No watch found");
+  });
+
+  it("lists compact last result and error details", async () => {
+    const store = createMemoryStore();
+    const [watchCommand, watchesCommand] = createWatchesCommands({
+      api: { runtime: {} as never },
+      getStore: () => store,
+      config: DEFAULT_WATCHES_CONFIG,
+      now: () => 1_000,
+    });
+    await watchCommand.handler(createContext('url https://example.com contains "hello"') as never);
+    const id = [...store.watches.keys()][0];
+    const watch = store.watches.get(id);
+    if (!watch) {
+      throw new Error("watch was not created");
+    }
+    watch.lastResultSummary = "Text not found: hello HTTP 200 https://example.com/";
+    watch.lastError = "HTTP 403 fetching https://example.com/";
+
+    const listed = await watchesCommand.handler(createContext("all") as never);
+    expect(listed.text).toContain("last: Text not found");
+    expect(listed.text).toContain("error: HTTP 403");
+  });
+
+  it("cancels only watches owned by the caller and reports final status", async () => {
     const store = createMemoryStore();
     const [watchCommand] = createWatchesCommands({
       api: { runtime: {} as never },
@@ -126,6 +171,7 @@ describe("watch commands", () => {
 
     const cancelled = await watchCommand.handler(createContext(`cancel ${id}`, "alice") as never);
     expect(cancelled.text).toContain("cancelled");
+    expect(cancelled.text).toContain("final status: cancelled");
     expect(store.watches.get(id)?.status).toBe("cancelled");
   });
 
@@ -143,5 +189,20 @@ describe("watch commands", () => {
       createContext("models gpt-5.6 until available") as never,
     );
     expect(blocked.text).toContain("Cancel one");
+  });
+
+  it("explains baseline capture when creating URL changed watches", async () => {
+    const store = createMemoryStore();
+    const [watchCommand] = createWatchesCommands({
+      api: { runtime: {} as never },
+      getStore: () => store,
+      config: DEFAULT_WATCHES_CONFIG,
+      now: () => 1_000,
+    });
+
+    const created = await watchCommand.handler(
+      createContext("url https://example.com changed") as never,
+    );
+    expect(created.text).toContain("baseline: first check captures");
   });
 });

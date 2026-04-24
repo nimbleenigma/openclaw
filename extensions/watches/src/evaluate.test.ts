@@ -57,12 +57,36 @@ describe("watch condition evaluation", () => {
     expect(changed.triggered).toBe(true);
   });
 
+  it("keeps changed URL watches quiet for unchanged content", () => {
+    const initial = evaluateTextCondition({
+      condition: { type: "changed" },
+      text: "alpha",
+    });
+    const unchanged = evaluateTextCondition({
+      condition: { type: "changed" },
+      text: "alpha",
+      previousHash: initial.resultHash,
+    });
+    expect(unchanged.triggered).toBe(false);
+    expect(unchanged.summary).toContain("No content change");
+  });
+
   it("matches URL contains conditions deterministically", () => {
     const result = evaluateTextCondition({
       condition: { type: "contains", text: "GPT-5.5" },
       text: "gpt-5.5 is here",
     });
     expect(result.triggered).toBe(true);
+  });
+
+  it("matches URL regex conditions against fetched text", () => {
+    const result = evaluateTextCondition({
+      condition: { type: "matches", pattern: "GPT-5\\.5\\s+API", flags: "i" },
+      text: "The gpt-5.5 api is here",
+      hashText: "canonical response",
+    });
+    expect(result.triggered).toBe(true);
+    expect(result.resultHash).toBe(hashWatchResult("canonical response"));
   });
 });
 
@@ -101,6 +125,79 @@ describe("URL checks", () => {
     expect(outcome.resultHash).toBe(
       hashWatchResult("200\nhttps://example.com/\nhello from the page"),
     );
+  });
+
+  it("distinguishes missing text from HTTP fetch failures", async () => {
+    const missingText = await checkUrlWatch({
+      watch: createUrlWatch({ condition: { type: "contains", text: "needle" } }),
+      timeoutMs: 1000,
+      maxBytes: 1024,
+      fetchImpl: vi.fn(async () => new Response("haystack only")),
+    });
+    expect(missingText.triggered).toBe(false);
+    expect(missingText.summary).toContain("Text not found");
+
+    await expect(
+      checkUrlWatch({
+        watch: createUrlWatch({ condition: { type: "contains", text: "needle" } }),
+        timeoutMs: 1000,
+        maxBytes: 1024,
+        fetchImpl: vi.fn(async () => new Response("Forbidden", { status: 403 })),
+      }),
+    ).rejects.toThrow("HTTP 403");
+  });
+
+  it("triggers URL changed watches only after a later content hash changes", async () => {
+    const baseline = await checkUrlWatch({
+      watch: createUrlWatch({
+        condition: { type: "changed" },
+        title: "URL changed: https://example.com/",
+      }),
+      timeoutMs: 1000,
+      maxBytes: 1024,
+      fetchImpl: vi.fn(async () => new Response("alpha")),
+    });
+    expect(baseline.triggered).toBe(false);
+    expect(baseline.summary).toContain("Baseline captured");
+
+    const unchanged = await checkUrlWatch({
+      watch: createUrlWatch({
+        condition: { type: "changed" },
+        title: "URL changed: https://example.com/",
+        lastResultHash: baseline.resultHash,
+      }),
+      timeoutMs: 1000,
+      maxBytes: 1024,
+      fetchImpl: vi.fn(async () => new Response("alpha")),
+    });
+    expect(unchanged.triggered).toBe(false);
+    expect(unchanged.summary).toContain("No content change");
+
+    const changed = await checkUrlWatch({
+      watch: createUrlWatch({
+        condition: { type: "changed" },
+        title: "URL changed: https://example.com/",
+        lastResultHash: baseline.resultHash,
+      }),
+      timeoutMs: 1000,
+      maxBytes: 1024,
+      fetchImpl: vi.fn(async () => new Response("beta")),
+    });
+    expect(changed.triggered).toBe(true);
+    expect(changed.summary).toContain("Content changed");
+  });
+
+  it("matches URL regex watches from bounded text fetches", async () => {
+    const outcome = await checkUrlWatch({
+      watch: createUrlWatch({
+        condition: { type: "matches", pattern: "GPT-5\\.5\\s+API", flags: "i" },
+      }),
+      timeoutMs: 1000,
+      maxBytes: 1024,
+      fetchImpl: vi.fn(async () => new Response("The gpt-5.5 API is live.")),
+    });
+    expect(outcome.triggered).toBe(true);
+    expect(outcome.summary).toContain("Matched regex");
   });
 
   it("rejects oversized URL responses", async () => {

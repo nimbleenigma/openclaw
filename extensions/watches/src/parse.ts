@@ -1,8 +1,10 @@
+import { parseWatchRegex } from "./regex.js";
 import type { ModelWatchSource, UrlWatchSource, WatchCondition, WatchKind } from "./types.js";
 
 export type ParsedWatchCommand =
   | { action: "help" }
   | { action: "cancel"; id: string }
+  | { action: "show"; id: string }
   | {
       action: "create";
       kind: WatchKind;
@@ -104,6 +106,25 @@ function parseUrlWatch(rest: string): ParsedWatchCommand {
       title: `URL changed: ${parsedUrl.toString()}`,
     };
   }
+  const matchesMatch = /^matches\s+([\s\S]+)$/i.exec(conditionText);
+  if (matchesMatch) {
+    const rawPattern = stripMatchingQuotes(matchesMatch[1] ?? "");
+    const parsedRegex = parseWatchRegex(rawPattern);
+    if (!parsedRegex.ok) {
+      return { action: "error", message: parsedRegex.message };
+    }
+    return {
+      action: "create",
+      kind: "url",
+      source,
+      condition: {
+        type: "matches",
+        pattern: parsedRegex.pattern,
+        flags: parsedRegex.flags,
+      },
+      title: `URL matches: /${parsedRegex.pattern}/${parsedRegex.flags}`,
+    };
+  }
   const containsMatch = /^contains\s+([\s\S]+)$/i.exec(conditionText);
   if (!containsMatch) {
     return { action: "error", message: 'Usage: /watch url <url> contains "<text>"' };
@@ -138,6 +159,13 @@ export function parseWatchCommand(args?: string): ParsedWatchCommand {
       return { action: "error", message: "Usage: /watch cancel <id>" };
     }
     return { action: "cancel", id };
+  }
+  if (action === "show") {
+    const id = first.rest.trim();
+    if (!id) {
+      return { action: "error", message: "Usage: /watch show <id>" };
+    }
+    return { action: "show", id };
   }
   if (action === "models" || action === "model") {
     return parseModelWatch(first.rest);
