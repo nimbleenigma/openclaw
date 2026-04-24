@@ -18,8 +18,8 @@ export type ParsedWatchesCommand = {
   includeAll: boolean;
 };
 
-const MAX_CONDITION_TEXT_CHARS = 512;
-const MAX_MODEL_QUERY_CHARS = 128;
+export const MAX_CONDITION_TEXT_CHARS = 512;
+export const MAX_MODEL_QUERY_CHARS = 128;
 
 function trimCommandArgs(args?: string): string {
   return args?.trim() ?? "";
@@ -46,7 +46,7 @@ function splitFirstToken(value: string): { token: string; rest: string } {
   };
 }
 
-function parseProviderModel(query: string): ModelWatchSource {
+export function parseProviderModel(query: string): ModelWatchSource {
   const trimmed = query.trim();
   const slashIndex = trimmed.indexOf("/");
   if (slashIndex > 0 && slashIndex < trimmed.length - 1) {

@@ -6,6 +6,7 @@ import registerWatches from "./index.js";
 describe("watches plugin registration", () => {
   it("registers watch commands and scheduler service", async () => {
     const commands: OpenClawPluginCommandDefinition[] = [];
+    const tools: Array<{ tool: unknown; opts: unknown }> = [];
     let service:
       | {
           id: string;
@@ -23,6 +24,9 @@ describe("watches plugin registration", () => {
         },
       } as never,
       registerCommand: (command) => commands.push(command),
+      registerTool: (tool, opts) => {
+        tools.push({ tool, opts });
+      },
       registerService: (nextService) => {
         service = nextService;
       },
@@ -31,6 +35,8 @@ describe("watches plugin registration", () => {
     registerWatches.register(api);
 
     expect(commands.map((command) => command.name).toSorted()).toEqual(["watch", "watches"]);
+    expect(tools).toHaveLength(1);
+    expect(tools[0]?.opts).toMatchObject({ name: "watches_manage" });
     expect(service?.id).toBe("watches-scheduler");
   });
 });

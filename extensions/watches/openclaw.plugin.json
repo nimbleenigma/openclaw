@@ -13,6 +13,9 @@
       "kind": "runtime-slash"
     }
   ],
+  "contracts": {
+    "tools": ["watches_manage"]
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

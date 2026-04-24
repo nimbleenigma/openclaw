@@ -47,6 +47,22 @@ List and cancel watches:
 /watch cancel w_1234abcd
 ```
 
+## Assistant Tool
+
+Agents can manage the same watches without emitting slash-command text through
+the `watches_manage` tool. The tool supports these actions:
+
+- `create_model_availability`
+- `create_url_contains`
+- `create_url_matches`
+- `create_url_changed`
+- `list`
+- `show`
+- `cancel`
+
+Tool-created watches use the current requester/session as the owner and notify
+the same captured chat target as slash-created watches.
+
 ## Behavior
 
 - Watches trigger once by default.

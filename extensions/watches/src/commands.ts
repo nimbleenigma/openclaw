@@ -1,39 +1,19 @@
-import { randomBytes } from "node:crypto";
 import type {
   OpenClawPluginApi,
   OpenClawPluginCommandDefinition,
   PluginCommandContext,
 } from "../api.js";
-import type { WatchesConfig } from "./config.js";
+import {
+  createWatchManagementService,
+  type WatchManagementDeps,
+  type WatchManagementContext,
+} from "./management.js";
 import { parseWatchCommand, parseWatchesCommand } from "./parse.js";
-import type { CreateWatchInput, WatchCondition, WatchRecord, WatchSource } from "./types.js";
+import type { WatchCondition, WatchRecord, WatchSource } from "./types.js";
 
-export type WatchesCommandDeps = {
+export type WatchesCommandDeps = WatchManagementDeps & {
   api: Pick<OpenClawPluginApi, "runtime">;
-  getStore: () => {
-    createWatch(input: CreateWatchInput): WatchRecord;
-    countActiveForOwner(ownerKey: string): number;
-    listWatches(params?: {
-      ownerKey?: string;
-      includeAll?: boolean;
-      limit?: number;
-    }): WatchRecord[];
-    getWatch(id: string): WatchRecord | undefined;
-    cancelWatch(params: {
-      id: string;
-      ownerKey?: string;
-      now: number;
-      allowAnyOwner?: boolean;
-    }): WatchRecord | undefined;
-  };
-  config: WatchesConfig;
-  now?: () => number;
-  wakeScheduler?: () => void;
 };
-
-function nowMs(deps: WatchesCommandDeps): number {
-  return deps.now?.() ?? Date.now();
-}
 
 export function resolveWatchOwnerKey(ctx: PluginCommandContext): string {
   const sender = ctx.senderId?.trim();
@@ -55,10 +35,6 @@ function isAdminContext(ctx: PluginCommandContext): boolean {
   return ctx.gatewayClientScopes?.includes("operator.admin") === true;
 }
 
-function generateWatchId(): string {
-  return `w_${randomBytes(4).toString("hex")}`;
-}
-
 function captureDeliveryTarget(ctx: PluginCommandContext) {
   return {
     sessionKey: ctx.sessionKey,
@@ -71,6 +47,21 @@ function captureDeliveryTarget(ctx: PluginCommandContext) {
   };
 }
 
+function createManagementContext(ctx: PluginCommandContext): WatchManagementContext {
+  return {
+    ownerKey: resolveWatchOwnerKey(ctx),
+    deliveryTarget: captureDeliveryTarget(ctx),
+    allowAnyOwner: isAdminContext(ctx),
+  };
+}
+
+function formatManagementError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
 function formatTimestamp(value?: number): string {
   return value ? new Date(value).toISOString() : "(none)";
 }
@@ -81,10 +72,6 @@ function compactText(value: string, maxChars = 120): string {
     return normalized;
   }
   return `${normalized.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
-}
-
-function canAccessWatch(watch: WatchRecord, ownerKey: string, allowAnyOwner: boolean): boolean {
-  return allowAnyOwner || watch.ownerKey === ownerKey;
 }
 
 function formatWatchSource(kind: WatchRecord["kind"], source: WatchSource): string {
@@ -157,6 +144,7 @@ function usage(): string {
 }
 
 function createWatchCommand(deps: WatchesCommandDeps): OpenClawPluginCommandDefinition {
+  const manager = createWatchManagementService(deps);
   return {
     name: "watch",
     description: "Create or cancel a temporary watch.",
@@ -170,25 +158,18 @@ function createWatchCommand(deps: WatchesCommandDeps): OpenClawPluginCommandDefi
         return { text: `${parsed.message}\n\n${usage()}` };
       }
 
-      const store = deps.getStore();
-      const ownerKey = resolveWatchOwnerKey(ctx);
-      const now = nowMs(deps);
+      const managementContext = createManagementContext(ctx);
 
       if (parsed.action === "show") {
-        const watch = store.getWatch(parsed.id);
-        if (!watch || !canAccessWatch(watch, ownerKey, isAdminContext(ctx))) {
+        const watch = manager.showWatch(managementContext, parsed.id);
+        if (!watch) {
           return { text: `No watch found for ${parsed.id}.` };
         }
         return { text: formatWatchDetails(watch) };
       }
 
       if (parsed.action === "cancel") {
-        const cancelled = store.cancelWatch({
-          id: parsed.id,
-          ownerKey,
-          now,
-          allowAnyOwner: isAdminContext(ctx),
-        });
+        const cancelled = manager.cancelWatch(managementContext, parsed.id);
         if (!cancelled) {
           return { text: `No watch found for ${parsed.id}.` };
         }
@@ -200,7 +181,6 @@ function createWatchCommand(deps: WatchesCommandDeps): OpenClawPluginCommandDefi
               `- ${cancelled.title}`,
           };
         }
-        deps.wakeScheduler?.();
         return {
           text:
             `Watch ${cancelled.id} cancelled.\n` +
@@ -209,27 +189,12 @@ function createWatchCommand(deps: WatchesCommandDeps): OpenClawPluginCommandDefi
         };
       }
 
-      const activeCount = store.countActiveForOwner(ownerKey);
-      if (activeCount >= deps.config.maxActivePerOwner) {
-        return {
-          text: `You already have ${activeCount} active watches. Cancel one before adding another.`,
-        };
+      let watch: WatchRecord;
+      try {
+        watch = manager.createParsedWatch(managementContext, parsed);
+      } catch (error) {
+        return { text: formatManagementError(error) };
       }
-
-      const watch = store.createWatch({
-        id: generateWatchId(),
-        ownerKey,
-        deliveryTarget: captureDeliveryTarget(ctx),
-        title: parsed.title,
-        kind: parsed.kind,
-        source: parsed.source,
-        condition: parsed.condition,
-        intervalSeconds: deps.config.defaultIntervalSeconds,
-        nextCheckAt: now,
-        expiresAt: now + deps.config.defaultExpiryMs,
-        createdAt: now,
-      });
-      deps.wakeScheduler?.();
       const baselineNote =
         parsed.condition.type === "changed"
           ? "\n- baseline: first check captures the initial content"
@@ -247,15 +212,14 @@ function createWatchCommand(deps: WatchesCommandDeps): OpenClawPluginCommandDefi
 }
 
 function createWatchesCommand(deps: WatchesCommandDeps): OpenClawPluginCommandDefinition {
+  const manager = createWatchManagementService(deps);
   return {
     name: "watches",
     description: "List your active temporary watches.",
     acceptsArgs: true,
     handler: async (ctx) => {
       const parsed = parseWatchesCommand(ctx.args);
-      const ownerKey = resolveWatchOwnerKey(ctx);
-      const watches = deps.getStore().listWatches({
-        ownerKey,
+      const watches = manager.listWatches(createManagementContext(ctx), {
         includeAll: parsed.includeAll,
         limit: 50,
       });

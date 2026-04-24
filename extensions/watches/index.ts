@@ -1,8 +1,10 @@
 import { definePluginEntry, type OpenClawPluginApi } from "./api.js";
 import { createWatchesCommands } from "./src/commands.js";
 import { resolveWatchesConfig } from "./src/config.js";
+import { createWatchManagementService } from "./src/management.js";
 import { WatchesScheduler } from "./src/scheduler.js";
 import { resolveWatchesSqlitePath, WatchesStore } from "./src/store.sqlite.js";
+import { createWatchesManagementTool } from "./src/tool.js";
 
 export default definePluginEntry({
   id: "watches",
@@ -47,13 +49,22 @@ export default definePluginEntry({
       },
     });
 
-    for (const command of createWatchesCommands({
-      api,
+    const managementDeps = {
       getStore: () => getStore(),
       config,
       wakeScheduler: () => scheduler?.wake(),
+    };
+    const manager = createWatchManagementService(managementDeps);
+
+    for (const command of createWatchesCommands({
+      api,
+      ...managementDeps,
     })) {
       api.registerCommand(command);
     }
+
+    api.registerTool((ctx) => createWatchesManagementTool({ manager, ctx }), {
+      name: "watches_manage",
+    });
   },
 });
