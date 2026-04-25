@@ -181,13 +181,16 @@ export class WatchesScheduler {
         return;
       }
 
-      await this.options.runtime.system.notifyCapturedTarget({
+      const notification = await this.options.runtime.system.notifyCapturedTarget({
         text: outcome.notification,
         target: notificationTargetFromWatch(watch),
         cfg: this.options.cfg,
         idempotencyKey: `watch:${watch.id}:trigger:${outcome.resultHash}`,
         reason: "watch-triggered",
       });
+      if (!notification.delivered) {
+        throw new Error(`notification not delivered: ${notification.error}`);
+      }
       this.options.store.triggerWatch({
         id: watch.id,
         claimedBy: this.claimedBy,

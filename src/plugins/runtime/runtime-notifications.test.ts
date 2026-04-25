@@ -20,7 +20,7 @@ describe("runtime notification helper", () => {
   });
 
   it("sends directly when channel and target are captured", async () => {
-    sendMessageMock.mockResolvedValue({ via: "direct" });
+    sendMessageMock.mockResolvedValue({ via: "direct", result: { messageId: "m-1" } });
     const { notifyCapturedTarget } = await import("./runtime-notifications.js");
 
     const result = await notifyCapturedTarget({
@@ -47,6 +47,51 @@ describe("runtime notification helper", () => {
         idempotencyKey: "watch:w_1:trigger:hash",
       }),
     );
+  });
+
+  it("falls back to a session system event when direct delivery returns no message result", async () => {
+    sendMessageMock.mockResolvedValue({ via: "direct" });
+    const { notifyCapturedTarget } = await import("./runtime-notifications.js");
+
+    const result = await notifyCapturedTarget({
+      text: "Watch triggered",
+      target: {
+        sessionKey: "agent:main",
+        channel: "telegram",
+        to: "chat-1",
+      },
+      idempotencyKey: "watch:w_1:trigger:hash",
+    });
+
+    expect(result).toEqual({ delivered: true, via: "system-event" });
+    expect(peekSystemEventEntries("agent:main")).toEqual([
+      expect.objectContaining({
+        text: "Watch triggered",
+        contextKey: "watch:w_1:trigger:hash",
+        deliveryContext: { channel: "telegram", to: "chat-1" },
+      }),
+    ]);
+  });
+
+  it("does not treat an unconfirmed direct delivery as success without a session fallback", async () => {
+    sendMessageMock.mockResolvedValue({ via: "direct" });
+    const { notifyCapturedTarget } = await import("./runtime-notifications.js");
+
+    const result = await notifyCapturedTarget({
+      text: "Watch triggered",
+      target: {
+        channel: "telegram",
+        to: "chat-1",
+      },
+      idempotencyKey: "watch:w_1:trigger:hash",
+    });
+
+    expect(result).toEqual({
+      delivered: false,
+      via: "none",
+      error: "direct notification produced no delivered message",
+    });
+    expect(peekSystemEventEntries("agent:main")).toEqual([]);
   });
 
   it("falls back to a session system event when direct delivery fails", async () => {

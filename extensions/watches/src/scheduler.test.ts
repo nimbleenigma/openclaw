@@ -79,6 +79,46 @@ describe("WatchesScheduler", () => {
     });
   });
 
+  it("does not trigger or stamp notified hash when notification delivery is unconfirmed", async () => {
+    await withStore(async (store) => {
+      store.createWatch(createInput({ id: "w_a", now: 1_000, expiresAt: 1_000_000 }));
+      const runtime = {
+        system: {
+          notifyCapturedTarget: vi.fn(async () => ({
+            delivered: false as const,
+            via: "none" as const,
+            error: "direct notification produced no delivered message",
+          })),
+        },
+      };
+      const scheduler = new WatchesScheduler({
+        store,
+        runtime: runtime as never,
+        cfg: {},
+        config: DEFAULT_WATCHES_CONFIG,
+        claimedBy: "test-worker",
+        now: () => 1_000,
+        evaluator: async (): Promise<CheckOutcome> => ({
+          triggered: true,
+          resultHash: "hash-a",
+          summary: "matched",
+          notification: "Watch triggered",
+        }),
+      });
+
+      await scheduler.tickOnce();
+
+      const watch = store.getWatch("w_a");
+      expect(watch?.status).toBe("active");
+      expect(watch?.lastNotifiedHash).toBeUndefined();
+      expect(watch?.lastResultHash).toBeUndefined();
+      expect(watch?.errorCount).toBe(1);
+      expect(watch?.lastError).toContain("direct notification produced no delivered message");
+      expect(watch?.nextCheckAt).toBeGreaterThan(1_000);
+      expect(runtime.system.notifyCapturedTarget).toHaveBeenCalledOnce();
+    });
+  });
+
   it("keeps non-triggered watches active and schedules the next interval", async () => {
     await withStore(async (store) => {
       store.createWatch(createInput({ id: "w_a", now: 1_000 }));

@@ -34,6 +34,18 @@ function formatNotificationError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function hasDirectDeliveryResult(result: unknown): boolean {
+  if (!result || typeof result !== "object") {
+    return false;
+  }
+  const value = result as { result?: unknown };
+  if (!value.result || typeof value.result !== "object") {
+    return false;
+  }
+  const delivery = value.result as { messageId?: unknown };
+  return typeof delivery.messageId === "string" && delivery.messageId.trim().length > 0;
+}
+
 async function enqueueSessionNotification(params: {
   text: string;
   sessionKey: string;
@@ -70,7 +82,7 @@ export async function notifyCapturedTarget(
   const deliveryContext = normalizeDeliveryContext(params.target);
   if (deliveryContext?.channel && deliveryContext.to) {
     try {
-      await sendMessage({
+      const result = await sendMessage({
         channel: deliveryContext.channel,
         to: deliveryContext.to,
         accountId: deliveryContext.accountId,
@@ -81,7 +93,16 @@ export async function notifyCapturedTarget(
         requesterSessionKey: sessionKey,
         bestEffort: true,
       });
-      return { delivered: true, via: "direct" };
+      if (hasDirectDeliveryResult(result)) {
+        return { delivered: true, via: "direct" };
+      }
+      if (!sessionKey) {
+        return {
+          delivered: false,
+          via: "none",
+          error: "direct notification produced no delivered message",
+        };
+      }
     } catch (error) {
       if (!sessionKey) {
         return {
