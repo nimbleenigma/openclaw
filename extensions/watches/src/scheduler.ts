@@ -1,5 +1,6 @@
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
 import type { PluginRuntime, PluginLogger } from "../api.js";
+import { checkGitHubPrWatch } from "./check-github.js";
 import { checkModelAvailability } from "./check-model.js";
 import { checkUrlWatch } from "./check-url.js";
 import type { WatchesConfig } from "./config.js";
@@ -56,6 +57,12 @@ async function defaultEvaluator(
       watch,
       timeoutMs: config.urlTimeoutMs,
       maxBytes: config.urlMaxBytes,
+    });
+  }
+  if (watch.kind === "github_pr") {
+    return await checkGitHubPrWatch({
+      watch,
+      timeoutMs: config.urlTimeoutMs,
     });
   }
   throw new Error(`Unsupported watch kind: ${(watch as { kind?: string }).kind ?? "unknown"}`);

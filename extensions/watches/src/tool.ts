@@ -8,6 +8,8 @@ type WatchToolAction =
   | "create_url_contains"
   | "create_url_matches"
   | "create_url_changed"
+  | "create_github_pr_checks"
+  | "create_github_pr_state"
   | "list"
   | "show"
   | "cancel";
@@ -15,6 +17,7 @@ type WatchToolAction =
 type WatchToolParams = {
   action?: WatchToolAction;
   model?: unknown;
+  pr?: unknown;
   url?: unknown;
   text?: unknown;
   regex?: unknown;
@@ -50,6 +53,8 @@ const WatchManagementToolSchema = Type.Object({
       "create_url_contains",
       "create_url_matches",
       "create_url_changed",
+      "create_github_pr_checks",
+      "create_github_pr_state",
       "list",
       "show",
       "cancel",
@@ -57,6 +62,11 @@ const WatchManagementToolSchema = Type.Object({
     description: "Watch management action.",
   }),
   model: Type.Optional(Type.String({ description: "Model or provider/model query." })),
+  pr: Type.Optional(
+    Type.String({
+      description: "GitHub PR URL or owner/repo#number for create_github_pr_* actions.",
+    }),
+  ),
   url: Type.Optional(Type.String({ description: "HTTP or HTTPS URL to watch." })),
   text: Type.Optional(Type.String({ description: "Text for create_url_contains." })),
   regex: Type.Optional(Type.String({ description: "Regex pattern for create_url_matches." })),
@@ -162,7 +172,7 @@ export function createWatchesManagementTool(params: {
     name: "watches_manage",
     label: "Watches",
     description:
-      "Create, list, show, and cancel temporary watches scoped to the active requester/session. Supports model availability, URL contains, URL regex, and URL changed watches.",
+      "Create, list, show, and cancel temporary watches scoped to the active requester/session. Supports model availability, URL contains, URL regex, URL changed, GitHub PR checks, and GitHub PR snapshot watches.",
     parameters: WatchManagementToolSchema,
     async execute(_toolCallId, rawParams) {
       const raw = rawParams && typeof rawParams === "object" ? (rawParams as WatchToolParams) : {};
@@ -192,6 +202,18 @@ export function createWatchesManagementTool(params: {
           case "create_url_changed": {
             const watch = params.manager.createUrlChangedWatch(context, {
               url: requireString(raw, "url"),
+            });
+            return jsonResult({ ok: true, action, watch: serializeWatch(watch) });
+          }
+          case "create_github_pr_checks": {
+            const watch = params.manager.createGitHubPrChecksWatch(context, {
+              pr: requireString(raw, "pr"),
+            });
+            return jsonResult({ ok: true, action, watch: serializeWatch(watch) });
+          }
+          case "create_github_pr_state": {
+            const watch = params.manager.createGitHubPrStateWatch(context, {
+              pr: requireString(raw, "pr"),
             });
             return jsonResult({ ok: true, action, watch: serializeWatch(watch) });
           }

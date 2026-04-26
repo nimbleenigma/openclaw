@@ -111,6 +111,12 @@ describe("WatchManagementService", () => {
     const changed = manager.createUrlChangedWatch(context, {
       url: "https://example.com/news",
     });
+    const prChecks = manager.createGitHubPrChecksWatch(context, {
+      pr: "https://github.com/openclaw/openclaw/pull/123",
+    });
+    const prChanged = manager.createGitHubPrStateWatch(context, {
+      pr: "openclaw/openclaw#124",
+    });
 
     expect(model).toMatchObject({
       id: "w_1",
@@ -130,7 +136,24 @@ describe("WatchManagementService", () => {
     });
     expect(matches.condition).toEqual({ type: "matches", pattern: "GPT-5\\.5", flags: "i" });
     expect(changed.condition).toEqual({ type: "changed" });
-    expect(wakeScheduler).toHaveBeenCalledTimes(4);
+    expect(prChecks).toMatchObject({
+      id: "w_5",
+      kind: "github_pr",
+      source: {
+        owner: "openclaw",
+        repo: "openclaw",
+        number: 123,
+        url: "https://github.com/openclaw/openclaw/pull/123",
+      },
+      condition: { type: "github_pr_checks_pass" },
+    });
+    expect(prChanged).toMatchObject({
+      id: "w_6",
+      kind: "github_pr",
+      source: { owner: "openclaw", repo: "openclaw", number: 124 },
+      condition: { type: "github_pr_state_changed" },
+    });
+    expect(wakeScheduler).toHaveBeenCalledTimes(6);
   });
 
   it("lists, shows, and cancels watches scoped to the owner", () => {
@@ -189,5 +212,10 @@ describe("WatchManagementService", () => {
         text: "x",
       }),
     ).toThrow("http or https");
+    expect(() =>
+      manager.createGitHubPrChecksWatch(createContext("telegram:bob"), {
+        pr: "https://example.com/openclaw/openclaw/pull/1",
+      }),
+    ).toThrow("GitHub PR must be");
   });
 });

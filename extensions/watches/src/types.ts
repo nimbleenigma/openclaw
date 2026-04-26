@@ -1,6 +1,6 @@
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
 
-export type WatchKind = "model" | "url";
+export type WatchKind = "model" | "url" | "github_pr";
 export type WatchStatus = "active" | "triggered" | "expired" | "cancelled" | "failed";
 export type WatchEventType =
   | "created"
@@ -30,13 +30,23 @@ export type UrlWatchSource = {
   url: string;
 };
 
-export type WatchSource = ModelWatchSource | UrlWatchSource;
+export type GitHubPrWatchSource = {
+  owner: string;
+  repo: string;
+  number: number;
+  url: string;
+  query: string;
+};
+
+export type WatchSource = ModelWatchSource | UrlWatchSource | GitHubPrWatchSource;
 
 export type WatchCondition =
   | { type: "available" }
   | { type: "contains"; text: string; caseSensitive?: boolean }
   | { type: "changed" }
-  | { type: "matches"; pattern: string; flags: string };
+  | { type: "matches"; pattern: string; flags: string }
+  | { type: "github_pr_checks_pass" }
+  | { type: "github_pr_state_changed" };
 
 export type WatchRecord = {
   id: string;

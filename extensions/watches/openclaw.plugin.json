@@ -2,7 +2,7 @@
   "id": "watches",
   "enabledByDefault": true,
   "name": "Watches",
-  "description": "Temporary model and URL watches that notify the originating chat when they trigger.",
+  "description": "Temporary model, URL, and GitHub PR watches that notify the originating chat when they trigger.",
   "commandAliases": [
     {
       "name": "watch",

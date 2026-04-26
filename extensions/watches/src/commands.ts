@@ -3,6 +3,7 @@ import type {
   OpenClawPluginCommandDefinition,
   PluginCommandContext,
 } from "../api.js";
+import { formatGitHubPrRef } from "./github-pr.js";
 import {
   createWatchManagementService,
   type WatchManagementDeps,
@@ -81,7 +82,22 @@ function formatWatchSource(kind: WatchRecord["kind"], source: WatchSource): stri
   if (kind === "model" && "query" in source) {
     return source.query;
   }
+  if (kind === "github_pr" && "owner" in source) {
+    return formatGitHubPrRef(source);
+  }
   return "(unknown)";
+}
+
+function formatWatchType(kind: WatchRecord["kind"]): string {
+  switch (kind) {
+    case "github_pr":
+      return "GitHub PR";
+    case "model":
+      return "model";
+    case "url":
+      return "URL";
+  }
+  return "watch";
 }
 
 function formatWatchCondition(condition: WatchCondition): string {
@@ -94,12 +110,16 @@ function formatWatchCondition(condition: WatchCondition): string {
       return `contains "${condition.text}"`;
     case "matches":
       return `matches /${condition.pattern}/${condition.flags}`;
+    case "github_pr_checks_pass":
+      return "checks pass";
+    case "github_pr_state_changed":
+      return "snapshot changed";
   }
   return "(unknown)";
 }
 
 function formatWatchLine(watch: WatchRecord): string {
-  const parts = [`- ${watch.id}`, watch.status, `${watch.kind}: ${watch.title}`];
+  const parts = [`- ${watch.id}`, watch.status, watch.title];
   if (watch.status === "active") {
     parts.push(`next: ${formatTimestamp(watch.nextCheckAt)}`);
   }
@@ -115,7 +135,7 @@ function formatWatchDetails(watch: WatchRecord): string {
     `Watch ${watch.id}`,
     `- status: ${watch.status}`,
     `- title: ${watch.title}`,
-    `- kind: ${watch.kind}`,
+    `- type: ${formatWatchType(watch.kind)}`,
     `- source: ${formatWatchSource(watch.kind, watch.source)}`,
     `- condition: ${formatWatchCondition(watch.condition)}`,
     `- next check: ${formatTimestamp(watch.nextCheckAt)}`,
@@ -137,6 +157,9 @@ function usage(): string {
     '/watch url <url> contains "<text>"',
     "/watch url <url> changed",
     '/watch url <url> matches "<regex>"',
+    "/watch github pr <url|owner/repo#number> until checks pass",
+    "/watch github pr <url|owner/repo#number> changed",
+    "  (PR changed watches fire when the PR snapshot changes: state, draft, merged state, head, or checks.)",
     "/watches",
     "/watch show <id>",
     "/watch cancel <id>",
@@ -196,8 +219,8 @@ function createWatchCommand(deps: WatchesCommandDeps): OpenClawPluginCommandDefi
         return { text: formatManagementError(error) };
       }
       const baselineNote =
-        parsed.condition.type === "changed"
-          ? "\n- baseline: first check captures the initial content"
+        parsed.condition.type === "changed" || parsed.condition.type === "github_pr_state_changed"
+          ? "\n- baseline: first check captures the initial snapshot"
           : "";
       return {
         text:

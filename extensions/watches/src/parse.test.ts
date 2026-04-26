@@ -48,6 +48,50 @@ describe("watch command parser", () => {
     });
   });
 
+  it("parses GitHub PR checks and changed watches", () => {
+    expect(
+      parseWatchCommand(
+        "github pr https://github.com/openclaw/openclaw/pull/123 until checks pass",
+      ),
+    ).toEqual({
+      action: "create",
+      kind: "github_pr",
+      source: {
+        owner: "openclaw",
+        repo: "openclaw",
+        number: 123,
+        url: "https://github.com/openclaw/openclaw/pull/123",
+        query: "openclaw/openclaw#123",
+      },
+      condition: { type: "github_pr_checks_pass" },
+      title: "PR checks: openclaw/openclaw#123",
+    });
+    expect(parseWatchCommand("github pr openclaw/openclaw#123 changed")).toMatchObject({
+      action: "create",
+      kind: "github_pr",
+      source: {
+        owner: "openclaw",
+        repo: "openclaw",
+        number: 123,
+      },
+      condition: { type: "github_pr_state_changed" },
+      title: "PR snapshot: openclaw/openclaw#123",
+    });
+  });
+
+  it("rejects invalid GitHub PR references clearly", () => {
+    expect(
+      parseWatchCommand("github pr https://example.com/openclaw/openclaw/pull/1 changed"),
+    ).toMatchObject({
+      action: "error",
+      message: expect.stringContaining("GitHub PR must be"),
+    });
+    expect(parseWatchCommand("github pr openclaw/openclaw changed")).toMatchObject({
+      action: "error",
+      message: expect.stringContaining("GitHub PR must be"),
+    });
+  });
+
   it("rejects invalid regex watches clearly", () => {
     expect(parseWatchCommand('url https://example.com matches "[unterminated"')).toMatchObject({
       action: "error",

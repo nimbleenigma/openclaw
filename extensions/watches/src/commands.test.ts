@@ -205,4 +205,39 @@ describe("watch commands", () => {
     );
     expect(created.text).toContain("baseline: first check captures");
   });
+
+  it("creates GitHub PR watches and shows their source and condition", async () => {
+    const store = createMemoryStore();
+    const [watchCommand, watchesCommand] = createWatchesCommands({
+      api: { runtime: {} as never },
+      getStore: () => store,
+      config: DEFAULT_WATCHES_CONFIG,
+      now: () => 1_000,
+    });
+
+    const help = await watchCommand.handler(createContext("help") as never);
+    expect(help.text).toContain("PR changed watches fire when the PR snapshot changes");
+
+    const createdChecks = await watchCommand.handler(
+      createContext(
+        "github pr https://github.com/openclaw/openclaw/pull/123 until checks pass",
+      ) as never,
+    );
+    expect(createdChecks.text).toContain("PR checks: openclaw/openclaw#123");
+
+    const createdChanged = await watchCommand.handler(
+      createContext("github pr openclaw/openclaw#124 changed") as never,
+    );
+    expect(createdChanged.text).toContain("baseline: first check captures the initial snapshot");
+
+    const id = [...store.watches.keys()][0];
+    const shown = await watchCommand.handler(createContext(`show ${id}`) as never);
+    expect(shown.text).toContain("- type: GitHub PR");
+    expect(shown.text).toContain("- source: openclaw/openclaw#123");
+    expect(shown.text).toContain("- condition: checks pass");
+
+    const listed = await watchesCommand.handler(createContext("") as never);
+    expect(listed.text).toContain("PR checks: openclaw/openclaw#123");
+    expect(listed.text).not.toContain("github_pr:");
+  });
 });

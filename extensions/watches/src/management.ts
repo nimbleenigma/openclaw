@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { WatchesConfig } from "./config.js";
+import { formatGitHubPrRef, requireGitHubPrRef } from "./github-pr.js";
 import { MAX_CONDITION_TEXT_CHARS, MAX_MODEL_QUERY_CHARS, parseProviderModel } from "./parse.js";
 import { parseWatchRegex } from "./regex.js";
 import type {
@@ -71,6 +72,14 @@ function normalizeHttpUrl(input: string): string {
     throw new WatchManagementError("Watch URL must use http or https.");
   }
   return parsed.toString();
+}
+
+function normalizeGitHubPr(input: string) {
+  try {
+    return requireGitHubPrRef(input);
+  } catch (error) {
+    throw new WatchManagementError(error instanceof Error ? error.message : String(error));
+  }
 }
 
 function ensureAccess(watch: WatchRecord, context: WatchManagementContext): boolean {
@@ -168,6 +177,26 @@ export class WatchManagementService {
       source: { url },
       condition: { type: "changed" },
       title: `URL changed: ${url}`,
+    });
+  }
+
+  createGitHubPrChecksWatch(context: WatchManagementContext, params: { pr: string }): WatchRecord {
+    const source = normalizeGitHubPr(params.pr);
+    return this.createParsedWatch(context, {
+      kind: "github_pr",
+      source,
+      condition: { type: "github_pr_checks_pass" },
+      title: `PR checks: ${formatGitHubPrRef(source)}`,
+    });
+  }
+
+  createGitHubPrStateWatch(context: WatchManagementContext, params: { pr: string }): WatchRecord {
+    const source = normalizeGitHubPr(params.pr);
+    return this.createParsedWatch(context, {
+      kind: "github_pr",
+      source,
+      condition: { type: "github_pr_state_changed" },
+      title: `PR snapshot: ${formatGitHubPrRef(source)}`,
     });
   }
 

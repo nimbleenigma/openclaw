@@ -69,6 +69,13 @@ export function evaluateTextCondition(params: {
         resultHash,
         summary: "Availability conditions are evaluated by model checks.",
       };
+    case "github_pr_checks_pass":
+    case "github_pr_state_changed":
+      return {
+        triggered: false,
+        resultHash,
+        summary: "GitHub PR conditions are evaluated by GitHub checks.",
+      };
   }
   return {
     triggered: false,

@@ -142,6 +142,14 @@ describe("watches_manage tool", () => {
       action: "create_url_changed",
       url: "https://example.com/news",
     });
+    const prChecks = await tool.execute("tool-5", {
+      action: "create_github_pr_checks",
+      pr: "https://github.com/openclaw/openclaw/pull/123",
+    });
+    const prState = await tool.execute("tool-6", {
+      action: "create_github_pr_state",
+      pr: "openclaw/openclaw#124",
+    });
 
     expect(details(model)).toMatchObject({
       ok: true,
@@ -159,6 +167,20 @@ describe("watches_manage tool", () => {
       ok: true,
       watch: { condition: { type: "changed" } },
     });
+    expect(details(prChecks)).toMatchObject({
+      ok: true,
+      watch: {
+        condition: { type: "github_pr_checks_pass" },
+        source: { owner: "openclaw", repo: "openclaw", number: 123 },
+      },
+    });
+    expect(details(prState)).toMatchObject({
+      ok: true,
+      watch: {
+        condition: { type: "github_pr_state_changed" },
+        source: { owner: "openclaw", repo: "openclaw", number: 124 },
+      },
+    });
     expect(store.watches.get("w_1")).toMatchObject({
       ownerKey: "telegram:alice",
       ownerSessionKey: "agent:main",
@@ -167,7 +189,7 @@ describe("watches_manage tool", () => {
       ownerThreadId: "topic-1",
       ownerSenderId: "alice",
     });
-    expect(wakeScheduler).toHaveBeenCalledTimes(4);
+    expect(wakeScheduler).toHaveBeenCalledTimes(6);
   });
 
   it("lists, shows, and cancels watches without crossing owner scope", async () => {
@@ -222,6 +244,19 @@ describe("watches_manage tool", () => {
     expect(details(result)).toMatchObject({
       ok: false,
       error: expect.stringContaining("Regex pattern is invalid"),
+    });
+  });
+
+  it("returns clear validation errors for invalid GitHub PR input", async () => {
+    const { tool } = createToolHarness();
+    const result = await tool.execute("tool-1", {
+      action: "create_github_pr_checks",
+      pr: "https://example.com/openclaw/openclaw/pull/1",
+    });
+
+    expect(details(result)).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("GitHub PR must be"),
     });
   });
 });

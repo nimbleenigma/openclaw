@@ -1,5 +1,12 @@
+import { formatGitHubPrRef, parseGitHubPrRef } from "./github-pr.js";
 import { parseWatchRegex } from "./regex.js";
-import type { ModelWatchSource, UrlWatchSource, WatchCondition, WatchKind } from "./types.js";
+import type {
+  GitHubPrWatchSource,
+  ModelWatchSource,
+  UrlWatchSource,
+  WatchCondition,
+  WatchKind,
+} from "./types.js";
 
 export type ParsedWatchCommand =
   | { action: "help" }
@@ -8,7 +15,7 @@ export type ParsedWatchCommand =
   | {
       action: "create";
       kind: WatchKind;
-      source: ModelWatchSource | UrlWatchSource;
+      source: ModelWatchSource | UrlWatchSource | GitHubPrWatchSource;
       condition: WatchCondition;
       title: string;
     }
@@ -145,6 +152,50 @@ function parseUrlWatch(rest: string): ParsedWatchCommand {
   };
 }
 
+function githubPrUsage(): string {
+  return "Usage: /watch github pr <url|owner/repo#number> until checks pass";
+}
+
+function parseGitHubWatch(rest: string): ParsedWatchCommand {
+  const target = splitFirstToken(rest);
+  if (target.token.toLowerCase() !== "pr") {
+    return { action: "error", message: githubPrUsage() };
+  }
+  const ref = splitFirstToken(target.rest);
+  if (!ref.token) {
+    return { action: "error", message: githubPrUsage() };
+  }
+  const source = parseGitHubPrRef(ref.token);
+  if (!source) {
+    return {
+      action: "error",
+      message:
+        "GitHub PR must be a https://github.com/<owner>/<repo>/pull/<number> URL or owner/repo#number.",
+    };
+  }
+  const conditionText = ref.rest.trim();
+  const label = formatGitHubPrRef(source);
+  if (/^until\s+(?:checks|ci)\s+pass(?:es)?$/i.test(conditionText)) {
+    return {
+      action: "create",
+      kind: "github_pr",
+      source,
+      condition: { type: "github_pr_checks_pass" },
+      title: `PR checks: ${label}`,
+    };
+  }
+  if (/^changed$/i.test(conditionText)) {
+    return {
+      action: "create",
+      kind: "github_pr",
+      source,
+      condition: { type: "github_pr_state_changed" },
+      title: `PR snapshot: ${label}`,
+    };
+  }
+  return { action: "error", message: githubPrUsage() };
+}
+
 export function parseWatchCommand(args?: string): ParsedWatchCommand {
   const trimmed = trimCommandArgs(args);
   if (!trimmed || /^help$/i.test(trimmed)) {
@@ -172,6 +223,9 @@ export function parseWatchCommand(args?: string): ParsedWatchCommand {
   }
   if (action === "url") {
     return parseUrlWatch(first.rest);
+  }
+  if (action === "github") {
+    return parseGitHubWatch(first.rest);
   }
   return { action: "error", message: "Usage: /watch models <model> until available" };
 }

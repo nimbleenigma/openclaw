@@ -51,6 +51,31 @@ describe("WatchesStore", () => {
     });
   });
 
+  it("persists GitHub PR source and condition JSON without a schema migration", async () => {
+    await withStore(async (store) => {
+      const watch = store.createWatch({
+        ...createInput("w_pr"),
+        title: "PR checks: openclaw/openclaw#123",
+        kind: "github_pr",
+        source: {
+          owner: "openclaw",
+          repo: "openclaw",
+          number: 123,
+          url: "https://github.com/openclaw/openclaw/pull/123",
+          query: "openclaw/openclaw#123",
+        },
+        condition: { type: "github_pr_checks_pass" },
+      });
+
+      expect(watch.kind).toBe("github_pr");
+      expect(store.getWatch("w_pr")).toMatchObject({
+        kind: "github_pr",
+        source: { owner: "openclaw", repo: "openclaw", number: 123 },
+        condition: { type: "github_pr_checks_pass" },
+      });
+    });
+  });
+
   it("claims due watches with leases and skips live claims", async () => {
     await withStore(async (store) => {
       store.createWatch(createInput("w_a", 1_000));

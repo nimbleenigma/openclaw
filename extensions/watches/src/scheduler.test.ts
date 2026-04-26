@@ -46,6 +46,55 @@ function createRuntime() {
   };
 }
 
+function requestUrl(input: RequestInfo | URL): string {
+  if (typeof input === "string") {
+    return input;
+  }
+  if (input instanceof URL) {
+    return input.toString();
+  }
+  return input.url;
+}
+
+function createPassingGitHubFetch() {
+  return vi.fn(async (input: RequestInfo | URL) => {
+    const url = requestUrl(input);
+    if (url.endsWith("/pulls/123")) {
+      return new Response(
+        JSON.stringify({
+          title: "Tighten the bolts",
+          html_url: "https://github.com/openclaw/openclaw/pull/123",
+          state: "open",
+          draft: false,
+          merged_at: null,
+          mergeable_state: "clean",
+          head: { sha: "abc1234567890" },
+        }),
+        { headers: { "content-type": "application/json" } },
+      );
+    }
+    if (url.endsWith("/commits/abc1234567890/status")) {
+      return new Response(
+        JSON.stringify({
+          state: "success",
+          statuses: [{ context: "ci", state: "success" }],
+        }),
+        { headers: { "content-type": "application/json" } },
+      );
+    }
+    if (url.endsWith("/commits/abc1234567890/check-runs?per_page=100")) {
+      return new Response(
+        JSON.stringify({
+          total_count: 1,
+          check_runs: [{ name: "test", status: "completed", conclusion: "success" }],
+        }),
+        { headers: { "content-type": "application/json" } },
+      );
+    }
+    throw new Error(`Unexpected GitHub API URL: ${url}`);
+  });
+}
+
 describe("WatchesScheduler", () => {
   it("triggers due watches once and notifies the captured target", async () => {
     await withStore(async (store) => {
@@ -142,6 +191,50 @@ describe("WatchesScheduler", () => {
       expect(watch?.status).toBe("active");
       expect(watch?.nextCheckAt).toBe(62_000);
       expect(watch?.claimedBy).toBeUndefined();
+    });
+  });
+
+  it("dispatches GitHub PR checks through the default evaluator", async () => {
+    await withStore(async (store) => {
+      store.createWatch({
+        ...createInput({ id: "w_pr", now: 1_000 }),
+        title: "PR checks: openclaw/openclaw#123",
+        kind: "github_pr",
+        source: {
+          owner: "openclaw",
+          repo: "openclaw",
+          number: 123,
+          url: "https://github.com/openclaw/openclaw/pull/123",
+          query: "openclaw/openclaw#123",
+        },
+        condition: { type: "github_pr_checks_pass" },
+      });
+      const runtime = createRuntime();
+      const fetchImpl = createPassingGitHubFetch();
+      const originalFetch = globalThis.fetch;
+      vi.stubGlobal("fetch", fetchImpl);
+      try {
+        const scheduler = new WatchesScheduler({
+          store,
+          runtime: runtime as never,
+          cfg: {},
+          config: DEFAULT_WATCHES_CONFIG,
+          claimedBy: "test-worker",
+          now: () => 1_000,
+        });
+
+        await scheduler.tickOnce();
+
+        expect(store.getWatch("w_pr")?.status).toBe("triggered");
+        expect(runtime.system.notifyCapturedTarget).toHaveBeenCalledWith(
+          expect.objectContaining({
+            text: expect.stringContaining("openclaw/openclaw#123"),
+            idempotencyKey: expect.stringMatching(/^watch:w_pr:trigger:/),
+          }),
+        );
+      } finally {
+        vi.stubGlobal("fetch", originalFetch);
+      }
     });
   });
 

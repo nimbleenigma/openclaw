@@ -9,7 +9,7 @@ import { createWatchesManagementTool } from "./src/tool.js";
 export default definePluginEntry({
   id: "watches",
   name: "Watches",
-  description: "Temporary model and URL watches that notify the originating chat.",
+  description: "Temporary model, URL, and GitHub PR watches that notify the originating chat.",
   register(api: OpenClawPluginApi) {
     const config = resolveWatchesConfig(api.pluginConfig);
     let store: WatchesStore | null = null;
