@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { checkModelAvailability, findAvailableModel } from "./check-model.js";
-import { checkUrlWatch, fetchUrlText } from "./check-url.js";
+import { checkUrlWatch, fetchUrlText, prepareUrlWatchText } from "./check-url.js";
 import { evaluateTextCondition, hashWatchResult } from "./evaluate.js";
 import type { WatchRecord } from "./types.js";
 
@@ -125,6 +125,12 @@ describe("URL checks", () => {
     expect(outcome.resultHash).toBe(
       hashWatchResult("200\nhttps://example.com/\nhello from the page"),
     );
+    if (!outcome.triggered) {
+      throw new Error("expected URL watch to trigger");
+    }
+    expect(outcome.notification).toContain("🔎 URL text found");
+    expect(outcome.notification).toContain('Matched: "hello"');
+    expect(outcome.notification).not.toContain("hello from the page");
   });
 
   it("distinguishes missing text from HTTP fetch failures", async () => {
@@ -144,7 +150,62 @@ describe("URL checks", () => {
         maxBytes: 1024,
         fetchImpl: vi.fn(async () => new Response("Forbidden", { status: 403 })),
       }),
-    ).rejects.toThrow("HTTP 403");
+    ).rejects.toThrow("blocked the basic fetch with HTTP 403");
+  });
+
+  it("extracts readable page text from HTML in text mode", async () => {
+    expect(
+      prepareUrlWatchText({
+        text: "<main>Release &amp; Notes</main>",
+        contentType: "text/html",
+        contentMode: "raw",
+      }),
+    ).toBe("<main>Release &amp; Notes</main>");
+    expect(
+      prepareUrlWatchText({
+        text:
+          "<html><head><script>secret()</script><style>p{}</style></head>" +
+          "<body><main><h1>Release &amp; Notes</h1><p>GPT-5.5&nbsp;API</p></main></body></html>",
+        contentType: "text/html; charset=utf-8",
+        contentMode: "text",
+      }),
+    ).toBe("Release & Notes GPT-5.5 API");
+
+    const outcome = await checkUrlWatch({
+      watch: createUrlWatch({
+        source: { url: "https://example.com/", contentMode: "text" },
+        condition: { type: "contains", text: "Release & Notes GPT-5.5 API" },
+        title: "URL text contains: Release & Notes GPT-5.5 API",
+      }),
+      timeoutMs: 1000,
+      maxBytes: 2048,
+      fetchImpl: vi.fn(
+        async () =>
+          new Response(
+            "<html><body><main><h1>Release &amp; Notes</h1><script>noise</script><p>GPT-5.5 API</p></main></body></html>",
+            { headers: { "content-type": "text/html; charset=utf-8" } },
+          ),
+      ),
+    });
+
+    expect(outcome.triggered).toBe(true);
+    expect(outcome.summary).toContain("page text");
+  });
+
+  it("summarizes URL fetch timeouts without stack noise", async () => {
+    const timeout = Object.assign(new Error("This operation was aborted."), {
+      name: "AbortError",
+    });
+    await expect(
+      fetchUrlText({
+        url: "https://example.com/",
+        timeoutMs: 500,
+        maxBytes: 1024,
+        fetchImpl: vi.fn(async () => {
+          throw timeout;
+        }),
+      }),
+    ).rejects.toThrow("URL fetch timed out after 500ms");
   });
 
   it("triggers URL changed watches only after a later content hash changes", async () => {
@@ -185,6 +246,11 @@ describe("URL checks", () => {
     });
     expect(changed.triggered).toBe(true);
     expect(changed.summary).toContain("Content changed");
+    if (!changed.triggered) {
+      throw new Error("expected URL changed watch to trigger");
+    }
+    expect(changed.notification).toContain("👀 URL changed");
+    expect(changed.notification).toContain("Baseline changed since last check");
   });
 
   it("matches URL regex watches from bounded text fetches", async () => {
@@ -198,6 +264,26 @@ describe("URL checks", () => {
     });
     expect(outcome.triggered).toBe(true);
     expect(outcome.summary).toContain("Matched regex");
+    if (!outcome.triggered) {
+      throw new Error("expected URL regex watch to trigger");
+    }
+    expect(outcome.notification).toContain("🔎 URL regex matched");
+  });
+
+  it("rejects non-text URL responses with a concise helpful error", async () => {
+    await expect(
+      checkUrlWatch({
+        watch: createUrlWatch(),
+        timeoutMs: 1000,
+        maxBytes: 1024,
+        fetchImpl: vi.fn(
+          async () =>
+            new Response(new Uint8Array([1, 2, 3]), {
+              headers: { "content-type": "image/png" },
+            }),
+        ),
+      }),
+    ).rejects.toThrow("URL response is not text-like content (image/png)");
   });
 
   it("rejects oversized URL responses", async () => {

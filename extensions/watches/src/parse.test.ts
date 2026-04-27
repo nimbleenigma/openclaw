@@ -31,6 +31,47 @@ describe("watch command parser", () => {
     });
   });
 
+  it("parses URL page-text mode variants", () => {
+    expect(parseWatchCommand("url https://example.com text changed")).toMatchObject({
+      action: "create",
+      kind: "url",
+      source: { url: "https://example.com/", contentMode: "text" },
+      condition: { type: "changed" },
+      title: "URL text changed: https://example.com/",
+    });
+    expect(parseWatchCommand('url https://example.com contains "GPT-5.5 API" text')).toMatchObject({
+      action: "create",
+      kind: "url",
+      source: { contentMode: "text" },
+      condition: { type: "contains", text: "GPT-5.5 API" },
+      title: "URL text contains: GPT-5.5 API",
+    });
+    expect(parseWatchCommand('url https://example.com text matches "GPT-5\\.5"')).toMatchObject({
+      action: "create",
+      kind: "url",
+      source: { contentMode: "text" },
+      condition: { type: "matches", pattern: "GPT-5\\.5" },
+      title: "URL text matches: /GPT-5\\.5/i",
+    });
+  });
+
+  it("keeps unquoted raw URL conditions ending in text compatible", () => {
+    expect(parseWatchCommand("url https://example.com contains text")).toMatchObject({
+      action: "create",
+      kind: "url",
+      source: { url: "https://example.com/" },
+      condition: { type: "contains", text: "text" },
+      title: "URL contains: text",
+    });
+    expect(parseWatchCommand("url https://example.com matches text")).toMatchObject({
+      action: "create",
+      kind: "url",
+      source: { url: "https://example.com/" },
+      condition: { type: "matches", pattern: "text" },
+      title: "URL matches: /text/i",
+    });
+  });
+
   it("parses URL regex watches", () => {
     expect(parseWatchCommand('url https://example.com matches "GPT-5\\.5\\s+API"')).toEqual({
       action: "create",

@@ -132,6 +132,7 @@ describe("watches_manage tool", () => {
       action: "create_url_contains",
       url: "https://example.com",
       text: "Example Domain",
+      content_mode: "text",
     });
     const matches = await tool.execute("tool-3", {
       action: "create_url_matches",
@@ -157,7 +158,11 @@ describe("watches_manage tool", () => {
     });
     expect(details(contains)).toMatchObject({
       ok: true,
-      watch: { condition: { type: "contains", text: "Example Domain" } },
+      watch: {
+        title: "URL text contains: Example Domain",
+        source: { contentMode: "text" },
+        condition: { type: "contains", text: "Example Domain" },
+      },
     });
     expect(details(matches)).toMatchObject({
       ok: true,
@@ -244,6 +249,21 @@ describe("watches_manage tool", () => {
     expect(details(result)).toMatchObject({
       ok: false,
       error: expect.stringContaining("Regex pattern is invalid"),
+    });
+  });
+
+  it("returns clear validation errors for invalid URL content mode", async () => {
+    const { tool } = createToolHarness();
+    const result = await tool.execute("tool-1", {
+      action: "create_url_contains",
+      url: "https://example.com",
+      text: "hello",
+      content_mode: "rendered",
+    });
+
+    expect(details(result)).toMatchObject({
+      ok: false,
+      error: "content_mode must be raw or text",
     });
   });
 

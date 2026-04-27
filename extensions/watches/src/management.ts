@@ -10,7 +10,10 @@ import type {
   WatchKind,
   WatchRecord,
   WatchSource,
+  UrlWatchSource,
 } from "./types.js";
+
+type UrlContentMode = NonNullable<UrlWatchSource["contentMode"]>;
 
 export type WatchManagementStore = {
   createWatch(input: CreateWatchInput): WatchRecord;
@@ -72,6 +75,24 @@ function normalizeHttpUrl(input: string): string {
     throw new WatchManagementError("Watch URL must use http or https.");
   }
   return parsed.toString();
+}
+
+function normalizeUrlContentMode(value?: string): UrlContentMode {
+  if (value == null || value === "" || value === "raw") {
+    return "raw";
+  }
+  if (value === "text") {
+    return "text";
+  }
+  throw new WatchManagementError("URL content mode must be raw or text.");
+}
+
+function createUrlSource(url: string, contentMode: UrlContentMode): UrlWatchSource {
+  return contentMode === "text" ? { url, contentMode } : { url };
+}
+
+function titlePrefixForUrl(contentMode: UrlContentMode): string {
+  return contentMode === "text" ? "URL text" : "URL";
 }
 
 function normalizeGitHubPr(input: string) {
@@ -137,7 +158,7 @@ export class WatchManagementService {
 
   createUrlContainsWatch(
     context: WatchManagementContext,
-    params: { url: string; text: string },
+    params: { url: string; text: string; contentMode?: UrlContentMode },
   ): WatchRecord {
     const text = params.text.trim();
     if (!text) {
@@ -146,37 +167,46 @@ export class WatchManagementService {
     if (text.length > MAX_CONDITION_TEXT_CHARS) {
       throw new WatchManagementError("Contains watch text is too long.");
     }
+    const contentMode = normalizeUrlContentMode(params.contentMode);
+    const url = normalizeHttpUrl(params.url);
     return this.createParsedWatch(context, {
       kind: "url",
-      source: { url: normalizeHttpUrl(params.url) },
+      source: createUrlSource(url, contentMode),
       condition: { type: "contains", text, caseSensitive: false },
-      title: `URL contains: ${text}`,
+      title: `${titlePrefixForUrl(contentMode)} contains: ${text}`,
     });
   }
 
   createUrlRegexWatch(
     context: WatchManagementContext,
-    params: { url: string; regex: string },
+    params: { url: string; regex: string; contentMode?: UrlContentMode },
   ): WatchRecord {
     const parsedRegex = parseWatchRegex(params.regex);
     if (!parsedRegex.ok) {
       throw new WatchManagementError(parsedRegex.message);
     }
+    const contentMode = normalizeUrlContentMode(params.contentMode);
     return this.createParsedWatch(context, {
       kind: "url",
-      source: { url: normalizeHttpUrl(params.url) },
+      source: createUrlSource(normalizeHttpUrl(params.url), contentMode),
       condition: { type: "matches", pattern: parsedRegex.pattern, flags: parsedRegex.flags },
-      title: `URL matches: /${parsedRegex.pattern}/${parsedRegex.flags}`,
+      title: `${titlePrefixForUrl(contentMode)} matches: /${parsedRegex.pattern}/${
+        parsedRegex.flags
+      }`,
     });
   }
 
-  createUrlChangedWatch(context: WatchManagementContext, params: { url: string }): WatchRecord {
+  createUrlChangedWatch(
+    context: WatchManagementContext,
+    params: { url: string; contentMode?: UrlContentMode },
+  ): WatchRecord {
     const url = normalizeHttpUrl(params.url);
+    const contentMode = normalizeUrlContentMode(params.contentMode);
     return this.createParsedWatch(context, {
       kind: "url",
-      source: { url },
+      source: createUrlSource(url, contentMode),
       condition: { type: "changed" },
-      title: `URL changed: ${url}`,
+      title: `${titlePrefixForUrl(contentMode)} changed: ${url}`,
     });
   }
 

@@ -38,6 +38,14 @@ Create a URL regex watch:
 /watch url https://example.com/news matches "GPT-5\\.5\\s+API"
 ```
 
+Create a URL watch against readable page text instead of raw response text:
+
+```text
+/watch url https://example.com/news text contains "GPT-5.5 API"
+/watch url https://example.com/news changed text
+/watch url https://example.com/news text matches "release\\s+notes"
+```
+
 Create a public GitHub PR checks watch:
 
 ```text
@@ -79,6 +87,8 @@ the `watches_manage` tool. The tool supports these actions:
 
 Tool-created watches use the current requester/session as the owner and notify
 the same captured chat target as slash-created watches.
+URL create actions may pass `content_mode: "text"` to evaluate readable page
+text; omit it, or use `raw`, for the original raw response-text behavior.
 
 ## Behavior
 
@@ -90,6 +100,10 @@ the same captured chat target as slash-created watches.
 - URL `matches` watches trigger when the fetched text matches the regex.
   Plain quoted patterns default to case-insensitive matching. Slash-style
   patterns such as `"/release notes/im"` may use only `i` and `m` flags.
+- URL page-text mode strips `script`, `style`, `noscript`, and `template`
+  content from HTML, prefers `main` or `article` text when present, decodes
+  common HTML entities, and collapses whitespace before evaluating the
+  condition. Raw mode remains the default for exact response-text watches.
 - Model watches check the configured OpenClaw model catalog and trigger when a
   matching provider/model appears.
 - GitHub PR `until checks pass` watches use the public GitHub REST API to read
@@ -103,9 +117,13 @@ the same captured chat target as slash-created watches.
   notifications include simple before/after lines when the previous stored
   summary is available.
 - Watches expire automatically if they do not trigger.
-- HTTP failures such as `403` or `500` are treated as fetch errors, not as
-  `text not found`. They stay active with backoff until the configured maximum
-  consecutive errors is reached.
+- HTTP failures such as `401`, `403`, `429`, or `500` are treated as fetch
+  errors, not as `text not found`. They stay active with backoff until the
+  configured maximum consecutive errors is reached.
+- Common URL fetch failures are summarized for chat output: blocked basic
+  fetches, rate limits, timeouts, non-text responses, oversized responses,
+  unsafe/private targets, and redirect problems avoid stack traces and explain
+  the bounded unauthenticated fetch model.
 - `/watches` shows the next check and compact last result. `/watches all` also
   helps inspect final status and recent errors.
 
@@ -116,12 +134,35 @@ For deterministic text watches, prefer boring stable pages:
 ```text
 /watch url https://example.com/ contains "Example Domain"
 /watch url https://www.iana.org/domains/reserved matches "Reserved\\s+Domains"
+/watch url https://www.iana.org/domains/reserved text contains "Reserved Domains"
 ```
 
 For change watches, use a URL you control, such as a small raw text file you
 can edit after the first baseline check. Many modern sites block unknown bots
 or return `403`, so a failing watch may mean the site does not allow simple
-unauthenticated fetches.
+unauthenticated fetches. A `403` message like "This site blocked the basic
+fetch" means the watch did not reach readable content; use a simpler public URL
+or wait for a future browser-rendered watch mode.
+
+Example URL notification:
+
+```text
+🔎 URL text found
+
+https://example.com/
+Matched: "Example Domain"
+HTTP 200 · text/html
+```
+
+Example URL change notification:
+
+```text
+👀 URL changed
+
+https://example.com/news
+Baseline changed since last check
+HTTP 200 · text/html · page text
+```
 
 For GitHub PR watches, use public pull requests:
 
@@ -171,4 +212,5 @@ URL watches use strict network safety checks:
 
 Watches do not support command watches, arbitrary cron schedules, authenticated
 URL requests, private GitHub repositories, review/comment activity watches, or
-model-assisted fuzzy conditions.
+model-assisted fuzzy conditions. CSS selector targeting is also deferred; page
+text mode is intentionally lightweight and deterministic.

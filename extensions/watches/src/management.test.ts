@@ -186,6 +186,33 @@ describe("WatchManagementService", () => {
     expect(wakeScheduler).toHaveBeenCalledTimes(2);
   });
 
+  it("creates URL page-text watches through the programmatic service", () => {
+    const store = createMemoryStore();
+    const manager = createWatchManagementService({
+      getStore: () => store,
+      config: DEFAULT_WATCHES_CONFIG,
+      now: () => 1_000,
+      idGenerator: () => "w_text",
+    });
+    const watch = manager.createUrlChangedWatch(createContext(), {
+      url: "https://example.com",
+      contentMode: "text",
+    });
+
+    expect(watch).toMatchObject({
+      title: "URL text changed: https://example.com/",
+      source: { url: "https://example.com/", contentMode: "text" },
+      condition: { type: "changed" },
+    });
+    expect(() =>
+      manager.createUrlContainsWatch(createContext("telegram:bob"), {
+        url: "https://example.com",
+        text: "hello",
+        contentMode: "rendered" as never,
+      }),
+    ).toThrow("URL content mode must be raw or text");
+  });
+
   it("validates limits and deterministic URL regex inputs before creating", () => {
     const store = createMemoryStore();
     const manager = createWatchManagementService({

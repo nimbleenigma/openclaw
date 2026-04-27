@@ -206,6 +206,27 @@ describe("watch commands", () => {
     expect(created.text).toContain("baseline: first check captures");
   });
 
+  it("creates and describes URL page-text watches", async () => {
+    const store = createMemoryStore();
+    const [watchCommand] = createWatchesCommands({
+      api: { runtime: {} as never },
+      getStore: () => store,
+      config: DEFAULT_WATCHES_CONFIG,
+      now: () => 1_000,
+    });
+
+    const help = await watchCommand.handler(createContext("help") as never);
+    expect(help.text).toContain("page-text mode");
+
+    const created = await watchCommand.handler(
+      createContext('url https://example.com text contains "hello"') as never,
+    );
+    expect(created.text).toContain("URL text contains: hello");
+    const id = [...store.watches.keys()][0];
+    const shown = await watchCommand.handler(createContext(`show ${id}`) as never);
+    expect(shown.text).toContain("- source: https://example.com/ (page text)");
+  });
+
   it("creates GitHub PR watches and shows their source and condition", async () => {
     const store = createMemoryStore();
     const [watchCommand, watchesCommand] = createWatchesCommands({

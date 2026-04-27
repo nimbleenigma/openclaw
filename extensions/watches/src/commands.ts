@@ -10,7 +10,7 @@ import {
   type WatchManagementContext,
 } from "./management.js";
 import { parseWatchCommand, parseWatchesCommand } from "./parse.js";
-import type { WatchCondition, WatchRecord, WatchSource } from "./types.js";
+import type { UrlWatchSource, WatchCondition, WatchRecord, WatchSource } from "./types.js";
 
 export type WatchesCommandDeps = WatchManagementDeps & {
   api: Pick<OpenClawPluginApi, "runtime">;
@@ -75,9 +75,13 @@ function compactText(value: string, maxChars = 120): string {
   return `${normalized.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
 }
 
+function isUrlSource(source: WatchSource): source is UrlWatchSource {
+  return "url" in source && !("owner" in source);
+}
+
 function formatWatchSource(kind: WatchRecord["kind"], source: WatchSource): string {
-  if (kind === "url" && "url" in source) {
-    return source.url;
+  if (kind === "url" && isUrlSource(source)) {
+    return source.contentMode === "text" ? `${source.url} (page text)` : source.url;
   }
   if (kind === "model" && "query" in source) {
     return source.query;
@@ -157,6 +161,7 @@ function usage(): string {
     '/watch url <url> contains "<text>"',
     "/watch url <url> changed",
     '/watch url <url> matches "<regex>"',
+    'Add text for page-text mode, e.g. /watch url <url> text contains "<text>"',
     "/watch github pr <url|owner/repo#number> until checks pass",
     "/watch github pr <url|owner/repo#number> changed",
     "  (PR changed watches fire when the PR snapshot changes: state, draft, merged state, head, or checks.)",

@@ -27,6 +27,7 @@ export type ParsedWatchesCommand = {
 
 export const MAX_CONDITION_TEXT_CHARS = 512;
 export const MAX_MODEL_QUERY_CHARS = 128;
+type UrlContentMode = NonNullable<UrlWatchSource["contentMode"]>;
 
 function trimCommandArgs(args?: string): string {
   return args?.trim() ?? "";
@@ -51,6 +52,36 @@ function splitFirstToken(value: string): { token: string; rest: string } {
     token: match?.[1] ?? "",
     rest: match?.[2]?.trim() ?? "",
   };
+}
+
+function parseUrlContentMode(value: string): {
+  contentMode: UrlContentMode;
+  conditionText: string;
+} {
+  let conditionText = value.trim();
+  let contentMode: UrlContentMode = "raw";
+  if (/^text\s+/i.test(conditionText)) {
+    conditionText = conditionText.replace(/^text\s+/i, "").trim();
+    contentMode = "text";
+  }
+  if (/\s+text$/i.test(conditionText)) {
+    const candidate = conditionText.replace(/\s+text$/i, "").trim();
+    const hasQuotedCondition =
+      /^(contains|matches)\s+(["'])([\s\S]*)\2$/i.test(candidate) || /^changed$/i.test(candidate);
+    if (hasQuotedCondition) {
+      conditionText = candidate;
+      contentMode = "text";
+    }
+  }
+  return { contentMode, conditionText };
+}
+
+function titlePrefixForUrl(contentMode: UrlContentMode): string {
+  return contentMode === "text" ? "URL text" : "URL";
+}
+
+function createUrlSource(url: string, contentMode: UrlContentMode): UrlWatchSource {
+  return contentMode === "text" ? { url, contentMode } : { url };
 }
 
 export function parseProviderModel(query: string): ModelWatchSource {
@@ -102,15 +133,15 @@ function parseUrlWatch(rest: string): ParsedWatchCommand {
   if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
     return { action: "error", message: "Watch URL must use http or https." };
   }
-  const source: UrlWatchSource = { url: parsedUrl.toString() };
-  const conditionText = first.rest.trim();
+  const { contentMode, conditionText } = parseUrlContentMode(first.rest);
+  const source = createUrlSource(parsedUrl.toString(), contentMode);
   if (/^changed$/i.test(conditionText)) {
     return {
       action: "create",
       kind: "url",
       source,
       condition: { type: "changed" },
-      title: `URL changed: ${parsedUrl.toString()}`,
+      title: `${titlePrefixForUrl(contentMode)} changed: ${parsedUrl.toString()}`,
     };
   }
   const matchesMatch = /^matches\s+([\s\S]+)$/i.exec(conditionText);
@@ -129,7 +160,9 @@ function parseUrlWatch(rest: string): ParsedWatchCommand {
         pattern: parsedRegex.pattern,
         flags: parsedRegex.flags,
       },
-      title: `URL matches: /${parsedRegex.pattern}/${parsedRegex.flags}`,
+      title: `${titlePrefixForUrl(contentMode)} matches: /${parsedRegex.pattern}/${
+        parsedRegex.flags
+      }`,
     };
   }
   const containsMatch = /^contains\s+([\s\S]+)$/i.exec(conditionText);
@@ -148,7 +181,7 @@ function parseUrlWatch(rest: string): ParsedWatchCommand {
     kind: "url",
     source,
     condition: { type: "contains", text, caseSensitive: false },
-    title: `URL contains: ${text}`,
+    title: `${titlePrefixForUrl(contentMode)} contains: ${text}`,
   };
 }
 

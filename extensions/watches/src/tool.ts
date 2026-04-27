@@ -21,6 +21,7 @@ type WatchToolParams = {
   url?: unknown;
   text?: unknown;
   regex?: unknown;
+  content_mode?: unknown;
   watch_id?: unknown;
   include_all?: unknown;
   limit?: unknown;
@@ -70,6 +71,12 @@ const WatchManagementToolSchema = Type.Object({
   url: Type.Optional(Type.String({ description: "HTTP or HTTPS URL to watch." })),
   text: Type.Optional(Type.String({ description: "Text for create_url_contains." })),
   regex: Type.Optional(Type.String({ description: "Regex pattern for create_url_matches." })),
+  content_mode: Type.Optional(
+    Type.String({
+      enum: ["raw", "text"],
+      description: "Optional URL content mode. Use text for readable page text extraction.",
+    }),
+  ),
   watch_id: Type.Optional(Type.String({ description: "Watch id for show or cancel." })),
   include_all: Type.Optional(
     Type.Boolean({ description: "List terminal watches as well as active watches." }),
@@ -94,6 +101,16 @@ function readLimit(value: unknown): number {
     return 50;
   }
   return Math.min(100, Math.max(1, Math.trunc(value)));
+}
+
+function readUrlContentMode(value: unknown): "raw" | "text" | undefined {
+  if (value == null) {
+    return undefined;
+  }
+  if (value === "raw" || value === "text") {
+    return value;
+  }
+  throw new Error("content_mode must be raw or text");
 }
 
 function serializeWatch(watch: WatchRecord): WatchToolRecord {
@@ -189,6 +206,7 @@ export function createWatchesManagementTool(params: {
             const watch = params.manager.createUrlContainsWatch(context, {
               url: requireString(raw, "url"),
               text: requireString(raw, "text"),
+              contentMode: readUrlContentMode(raw.content_mode),
             });
             return jsonResult({ ok: true, action, watch: serializeWatch(watch) });
           }
@@ -196,12 +214,14 @@ export function createWatchesManagementTool(params: {
             const watch = params.manager.createUrlRegexWatch(context, {
               url: requireString(raw, "url"),
               regex: requireString(raw, "regex"),
+              contentMode: readUrlContentMode(raw.content_mode),
             });
             return jsonResult({ ok: true, action, watch: serializeWatch(watch) });
           }
           case "create_url_changed": {
             const watch = params.manager.createUrlChangedWatch(context, {
               url: requireString(raw, "url"),
+              contentMode: readUrlContentMode(raw.content_mode),
             });
             return jsonResult({ ok: true, action, watch: serializeWatch(watch) });
           }

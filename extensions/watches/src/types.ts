@@ -28,6 +28,7 @@ export type ModelWatchSource = {
 
 export type UrlWatchSource = {
   url: string;
+  contentMode?: "raw" | "text";
 };
 
 export type GitHubPrWatchSource = {
