@@ -159,9 +159,10 @@ describe("matrixApprovalNativeRuntime", () => {
           reactMessage,
         },
       },
+      plannedTarget: buildMatrixApprovalRoomTarget("!room:example.org"),
       request: {} as never,
       approvalKind: "exec",
-      plannedTarget: buildMatrixApprovalRoomTarget("!room:example.org"),
+      view: {} as never,
       preparedTarget: {
         to: "room:!room:example.org",
         roomId: "!room:example.org",
@@ -300,9 +301,10 @@ describe("matrixApprovalNativeRuntime", () => {
           reactMessage,
         },
       },
+      plannedTarget: buildMatrixApprovalRoomTarget("!room:example.org"),
       request: {} as never,
       approvalKind: "exec",
-      plannedTarget: buildMatrixApprovalRoomTarget("!room:example.org"),
+      view: {} as never,
       preparedTarget: {
         to: "room:!room:example.org",
         roomId: "!room:example.org",
