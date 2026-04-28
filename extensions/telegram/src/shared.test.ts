@@ -27,6 +27,13 @@ function resolveAccount(cfg: OpenClawConfig, accountId: string): ResolvedTelegra
   return telegramPluginBase.config.resolveAccount(cfg, accountId);
 }
 
+function resolveAllowFrom(cfg: OpenClawConfig, accountId?: string) {
+  return telegramPluginBase.config.resolveAllowFrom?.({
+    cfg,
+    ...(accountId ? { accountId } : {}),
+  });
+}
+
 describe("createTelegramPluginBase config duplicate token guard", () => {
   it("wires the top-level models menu adapter into the production plugin", () => {
     const channelData = telegramPluginBase.commands?.buildModelsMenuChannelData?.({
@@ -165,5 +172,43 @@ describe("createTelegramPluginBase config duplicate token guard", () => {
     const account = resolveAccount(cfg, "default");
     expect(await telegramPluginBase.config.isConfigured!(account, cfg)).toBe(false);
     expect(telegramPluginBase.config.unconfiguredReason?.(account, cfg)).toContain("unavailable");
+  });
+
+  it("reads allowFrom without resolving unresolved token SecretRefs", () => {
+    const cfg = {
+      channels: {
+        telegram: {
+          botToken: {
+            source: "file",
+            provider: "filemain",
+            id: "/channels/telegram/botToken",
+          },
+          allowFrom: ["326307323"],
+        },
+      },
+    } as unknown as OpenClawConfig;
+
+    expect(resolveAllowFrom(cfg)).toEqual(["326307323"]);
+  });
+
+  it("keeps top-level allowFrom fallback on accessor reads for named accounts", () => {
+    const cfg = {
+      channels: {
+        telegram: {
+          allowFrom: ["326307323"],
+          accounts: {
+            work: {
+              botToken: {
+                source: "file",
+                provider: "filemain",
+                id: "/channels/telegram/workBotToken",
+              },
+            },
+          },
+        },
+      },
+    } as unknown as OpenClawConfig;
+
+    expect(resolveAllowFrom(cfg, "work")).toEqual(["326307323"]);
   });
 });
