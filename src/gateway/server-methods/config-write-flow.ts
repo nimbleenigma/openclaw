@@ -6,6 +6,7 @@ import {
 } from "../../config/config.js";
 import { extractDeliveryInfo } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { markPlannedGatewayRestart } from "../../infra/planned-gateway-restart.js";
 import {
   formatDoctorNonInteractiveHint,
   type RestartSentinelPayload,
@@ -212,6 +213,9 @@ export async function resolveGatewayConfigRestartWriteResult(params: {
         },
       })
     : undefined;
+  if (restart) {
+    markPlannedGatewayRestart({ sessionKey });
+  }
   if (restart?.coalesced) {
     params.context?.logGateway?.warn(
       `${params.mode} restart coalesced ${formatControlPlaneActor(params.actor)} delayMs=${restart.delayMs}`,

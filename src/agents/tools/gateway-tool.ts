@@ -5,6 +5,7 @@ import { parseConfigJson5, resolveConfigSnapshotHash } from "../../config/io.js"
 import { applyMergePatch } from "../../config/merge-patch.js";
 import { extractDeliveryInfo } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { markPlannedGatewayRestart } from "../../infra/planned-gateway-restart.js";
 import {
   buildRestartSuccessContinuation,
   formatDoctorNonInteractiveHint,
@@ -415,12 +416,14 @@ export function createGatewayTool(opts?: {
           emitHooks: {
             beforeEmit: async () => {
               sentinelPath = await writeRestartSentinel(payload);
+              markPlannedGatewayRestart({ sessionKey: payload.sessionKey });
             },
             afterEmitRejected: async () => {
               await removeRestartSentinelFile(sentinelPath);
             },
           },
         });
+        markPlannedGatewayRestart({ sessionKey: payload.sessionKey });
         return jsonResult(scheduled);
       }
 

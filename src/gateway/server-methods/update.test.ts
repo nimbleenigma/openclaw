@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearAllPlannedGatewayRestarts } from "../../infra/planned-gateway-restart.js";
 import type { RestartSentinelPayload } from "../../infra/restart-sentinel.js";
 import type { UpdateInstallSurface, UpdateRunResult } from "../../infra/update-runner.js";
 
@@ -136,6 +137,10 @@ beforeEach(() => {
   getLatestUpdateRestartSentinelMock.mockClear();
   scheduleGatewaySigusr1RestartMock.mockClear();
   scheduleGatewaySigusr1RestartMock.mockReturnValue({ scheduled: true });
+});
+
+afterEach(() => {
+  clearAllPlannedGatewayRestarts();
 });
 
 async function invokeUpdateRun(

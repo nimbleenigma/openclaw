@@ -12,6 +12,7 @@ import { extractDeliveryInfo } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
 import { getSessionBindingService } from "../../infra/outbound/session-binding-service.js";
 import type { SessionBindingRecord } from "../../infra/outbound/session-binding-service.js";
+import { markPlannedGatewayRestart } from "../../infra/planned-gateway-restart.js";
 import {
   buildRestartSuccessContinuation,
   formatDoctorNonInteractiveHint,
@@ -685,6 +686,7 @@ export const handleRestartCommand: CommandHandler = async (params, allowTextComm
         ? {
             beforeEmit: async () => {
               sentinelPath = await writeRestartSentinel(sentinelPayload);
+              markPlannedGatewayRestart({ sessionKey: sentinelPayload.sessionKey });
             },
             afterEmitRejected: async () => {
               await removeRestartSentinelFile(sentinelPath);
@@ -692,6 +694,7 @@ export const handleRestartCommand: CommandHandler = async (params, allowTextComm
           }
         : undefined,
     });
+    markPlannedGatewayRestart({ sessionKey: sentinelPayload?.sessionKey });
     return {
       shouldContinue: false,
       reply: {
@@ -703,6 +706,7 @@ export const handleRestartCommand: CommandHandler = async (params, allowTextComm
   try {
     if (sentinelPayload) {
       sentinelPath = await writeRestartSentinel(sentinelPayload);
+      markPlannedGatewayRestart({ sessionKey: sentinelPayload.sessionKey });
     }
   } catch (err) {
     logVerbose(`failed to write /restart sentinel: ${String(err)}`);

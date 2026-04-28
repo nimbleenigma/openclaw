@@ -2,12 +2,10 @@ import type { TypingCallbacks } from "../../channels/typing.js";
 import { resolveSilentReplySettings } from "../../config/silent-reply.js";
 import type { HumanDelayConfig } from "../../config/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { resolveRestartAwareSilentReplyRewriteText } from "../../infra/planned-gateway-restart.js";
 import { generateSecureInt } from "../../infra/secure-random.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import {
-  resolveSilentReplyRewriteText,
-  type SilentReplyConversationType,
-} from "../../shared/silent-reply-policy.js";
+import { type SilentReplyConversationType } from "../../shared/silent-reply-policy.js";
 import { sleep } from "../../utils.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../tokens.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
@@ -157,7 +155,8 @@ function resolveSilentFinalPayload(params: {
     });
     return {
       ...params.payload,
-      text: resolveSilentReplyRewriteText({
+      text: resolveRestartAwareSilentReplyRewriteText({
+        sessionKey: context.sessionKey,
         seed: `${context.sessionKey ?? context.surface ?? "silent-reply"}:${params.payload.text ?? ""}`,
       }),
     };

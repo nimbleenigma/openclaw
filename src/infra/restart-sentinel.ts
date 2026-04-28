@@ -4,6 +4,7 @@ import { formatCliCommand } from "../cli/command-format.js";
 import { resolveStateDir } from "../config/paths.js";
 import { resolveRuntimeServiceVersion } from "../version.js";
 import { writeJsonAtomic } from "./json-files.js";
+import { clearAllPlannedGatewayRestarts } from "./planned-gateway-restart.js";
 
 export type RestartSentinelLog = {
   stdoutTail?: string | null;
@@ -154,9 +155,11 @@ export async function markUpdateRestartSentinelFailure(
 
 export async function removeRestartSentinelFile(filePath: string | null | undefined) {
   if (!filePath) {
+    clearAllPlannedGatewayRestarts();
     return;
   }
   await fs.unlink(filePath).catch(() => {});
+  clearAllPlannedGatewayRestarts();
 }
 
 export function buildRestartSuccessContinuation(params: {

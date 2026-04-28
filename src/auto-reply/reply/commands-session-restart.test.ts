@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearAllPlannedGatewayRestarts } from "../../infra/planned-gateway-restart.js";
 import type { RestartSentinelPayload } from "../../infra/restart-sentinel.js";
 import type { scheduleGatewaySigusr1Restart } from "../../infra/restart.js";
 import type { HandleCommandsParams } from "./commands-types.js";
@@ -108,6 +109,10 @@ function restartCommandParams(overrides?: Partial<HandleCommandsParams>): Handle
 }
 
 describe("handleRestartCommand", () => {
+  afterEach(() => {
+    clearAllPlannedGatewayRestarts();
+  });
+
   beforeEach(() => {
     mocks.isRestartEnabled.mockReset();
     mocks.isRestartEnabled.mockReturnValue(true);

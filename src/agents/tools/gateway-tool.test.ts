@@ -1,4 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  PLANNED_GATEWAY_RESTART_FALLBACK_TEXT,
+  clearAllPlannedGatewayRestarts,
+  resolvePlannedGatewayRestartFallbackText,
+} from "../../infra/planned-gateway-restart.js";
 import type { RestartSentinelPayload } from "../../infra/restart-sentinel.js";
 import type { scheduleGatewaySigusr1Restart } from "../../infra/restart.js";
 
@@ -57,6 +62,10 @@ vi.mock("./gateway.js", () => ({
 }));
 
 describe("gateway tool restart continuation", () => {
+  afterEach(() => {
+    clearAllPlannedGatewayRestarts();
+  });
+
   beforeEach(() => {
     isRestartEnabledMock.mockReset();
     isRestartEnabledMock.mockReturnValue(true);
@@ -115,9 +124,19 @@ describe("gateway tool restart continuation", () => {
     });
 
     expect(writeRestartSentinelMock).not.toHaveBeenCalled();
+    expect(
+      resolvePlannedGatewayRestartFallbackText({
+        sessionKey: "agent:main:main",
+      }),
+    ).toBe(PLANNED_GATEWAY_RESTART_FALLBACK_TEXT);
     const scheduledArgs = scheduleGatewaySigusr1RestartMock.mock.calls.at(-1)?.[0];
     await scheduledArgs?.emitHooks?.beforeEmit?.();
 
+    expect(
+      resolvePlannedGatewayRestartFallbackText({
+        sessionKey: "agent:main:main",
+      }),
+    ).toBe(PLANNED_GATEWAY_RESTART_FALLBACK_TEXT);
     expect(writeRestartSentinelMock).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "restart",

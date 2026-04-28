@@ -1,8 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { withTempDir } from "../test-helpers/temp-dir.js";
 import { captureEnv } from "../test-utils/env.js";
+import { clearAllPlannedGatewayRestarts } from "./planned-gateway-restart.js";
 import {
   DEFAULT_RESTART_SUCCESS_CONTINUATION_MESSAGE,
   buildRestartSuccessContinuation,
@@ -31,6 +32,10 @@ async function withRestartSentinelStateDir(run: () => Promise<void>): Promise<vo
 }
 
 describe("restart sentinel", () => {
+  afterEach(() => {
+    clearAllPlannedGatewayRestarts();
+  });
+
   it("writes and consumes a sentinel", async () => {
     await withRestartSentinelStateDir(async () => {
       const payload = {

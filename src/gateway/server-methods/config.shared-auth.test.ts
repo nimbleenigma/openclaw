@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { clearAllPlannedGatewayRestarts } from "../../infra/planned-gateway-restart.js";
 import type { RestartSentinelPayload } from "../../infra/restart-sentinel.js";
 import {
   createConfigHandlerHarness,
@@ -61,6 +62,7 @@ vi.mock("../../infra/restart-sentinel.js", async () => {
 const { configHandlers } = await import("./config.js");
 
 afterEach(() => {
+  clearAllPlannedGatewayRestarts();
   vi.clearAllMocks();
 });
 

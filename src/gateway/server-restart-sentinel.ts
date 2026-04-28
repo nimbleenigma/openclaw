@@ -14,6 +14,10 @@ import { ackDelivery, enqueueDelivery, failDelivery } from "../infra/outbound/de
 import { buildOutboundSessionContext } from "../infra/outbound/session-context.js";
 import { resolveOutboundTarget } from "../infra/outbound/targets.js";
 import {
+  clearPlannedGatewayRestart,
+  markPlannedGatewayRestart,
+} from "../infra/planned-gateway-restart.js";
+import {
   finalizeUpdateRestartSentinelRunningVersion,
   formatRestartSentinelMessage,
   readRestartSentinel,
@@ -435,9 +439,14 @@ async function loadRestartSentinelStartupTask(params: {
       return { status: "ran" as const };
     }
 
+    let canonicalPlannedRestartSessionKey: string | undefined;
+    markPlannedGatewayRestart({ sessionKey });
+
     const { baseSessionKey, threadId: sessionThreadId } = parseSessionThreadInfo(sessionKey);
 
     const { cfg, entry, canonicalKey } = loadSessionEntry(sessionKey);
+    canonicalPlannedRestartSessionKey = canonicalKey;
+    markPlannedGatewayRestart({ sessionKey: canonicalKey });
 
     const sentinelContext = payload.deliveryContext;
     let sessionDeliveryContext = deliveryContextFromSession(entry);
@@ -523,6 +532,8 @@ async function loadRestartSentinelStartupTask(params: {
     }
 
     await removeRestartSentinelFile(sentinelPath);
+    markPlannedGatewayRestart({ sessionKey });
+    markPlannedGatewayRestart({ sessionKey: canonicalKey });
     enqueueRestartSentinelWake(message, sessionKey, wakeDeliveryContext);
 
     if (resolvedTo && channel) {
@@ -554,6 +565,8 @@ async function loadRestartSentinelStartupTask(params: {
       });
     }
 
+    clearPlannedGatewayRestart({ sessionKey });
+    clearPlannedGatewayRestart({ sessionKey: canonicalPlannedRestartSessionKey });
     return { status: "ran" as const };
   };
 

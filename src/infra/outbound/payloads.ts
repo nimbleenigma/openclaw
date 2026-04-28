@@ -17,10 +17,8 @@ import {
   type MessagePresentation,
   type ReplyPayloadDelivery,
 } from "../../interactive/payload.js";
-import {
-  resolveSilentReplyRewriteText,
-  type SilentReplyConversationType,
-} from "../../shared/silent-reply-policy.js";
+import { type SilentReplyConversationType } from "../../shared/silent-reply-policy.js";
+import { resolveRestartAwareSilentReplyRewriteText } from "../planned-gateway-restart.js";
 import { resolvePendingSpawnedChildren } from "./pending-spawn-query.js";
 
 export type NormalizedOutboundPayload = {
@@ -253,7 +251,8 @@ export function createOutboundPayloadPlan(
     }
     const visibleSilentPayload: ReplyPayload = {
       ...entry.payload,
-      text: resolveSilentReplyRewriteText({
+      text: resolveRestartAwareSilentReplyRewriteText({
+        sessionKey: context.sessionKey,
         seed: `${context.sessionKey ?? context.surface ?? "silent-reply"}:${entry.payload.text ?? ""}`,
       }),
     };

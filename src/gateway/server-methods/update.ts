@@ -2,6 +2,7 @@ import { isRestartEnabled } from "../../config/commands.flags.js";
 import { extractDeliveryInfo } from "../../config/sessions.js";
 import { resolveOpenClawPackageRoot } from "../../infra/openclaw-root.js";
 import { readPackageVersion } from "../../infra/package-json.js";
+import { markPlannedGatewayRestart } from "../../infra/planned-gateway-restart.js";
 import {
   formatDoctorNonInteractiveHint,
   type RestartSentinelPayload,
@@ -140,6 +141,9 @@ export const updateHandlers: GatewayRequestHandlers = {
     // Only restart the gateway when the update actually succeeded.
     // Restarting after a failed update leaves the process in a broken state
     // (corrupted node_modules, partial builds) and causes a crash loop.
+    if (result.status === "ok") {
+      markPlannedGatewayRestart({ sessionKey });
+    }
     const restart =
       result.status === "ok"
         ? scheduleGatewaySigusr1Restart({

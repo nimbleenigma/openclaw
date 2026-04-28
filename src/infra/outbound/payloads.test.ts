@@ -1,8 +1,13 @@
 import { resolveSendableOutboundReplyParts } from "openclaw/plugin-sdk/reply-payload";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { ReplyPayload } from "../../auto-reply/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { typedCases } from "../../test-utils/typed-cases.js";
+import {
+  PLANNED_GATEWAY_RESTART_FALLBACK_TEXT,
+  clearAllPlannedGatewayRestarts,
+  markPlannedGatewayRestart,
+} from "../planned-gateway-restart.js";
 import {
   createOutboundPayloadPlan,
   formatOutboundPayloadLog,
@@ -31,6 +36,10 @@ function resolveMirrorProjection(payloads: readonly ReplyPayload[]) {
 }
 
 describe("normalizeReplyPayloadsForDelivery", () => {
+  afterEach(() => {
+    clearAllPlannedGatewayRestarts();
+  });
+
   it("parses directives, merges media, and preserves reply metadata", () => {
     expect(
       normalizeReplyPayloadsForDelivery([
@@ -214,6 +223,36 @@ describe("normalizeReplyPayloadsForDelivery", () => {
     expect(projected).toHaveLength(1);
     expect(projected[0]?.text?.trim()).toBeTruthy();
     expect(projected[0]?.text?.trim()).not.toBe("NO_REPLY");
+  });
+
+  it("uses restart-aware text for direct silent replies during planned gateway restarts", () => {
+    const cfg: OpenClawConfig = {
+      agents: {
+        defaults: {
+          silentReply: {
+            direct: "disallow",
+            group: "allow",
+            internal: "allow",
+          },
+        },
+      },
+    };
+    const sessionKey = "agent:main:telegram:direct:123";
+    markPlannedGatewayRestart({ sessionKey });
+
+    expect(
+      projectOutboundPayloadPlanForDelivery(
+        createOutboundPayloadPlan([{ text: "NO_REPLY" }], {
+          cfg,
+          sessionKey,
+          surface: "telegram",
+        }),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        text: PLANNED_GATEWAY_RESTART_FALLBACK_TEXT,
+      }),
+    ]);
   });
 
   it("drops bare silent replies for groups when policy allows silence", () => {
