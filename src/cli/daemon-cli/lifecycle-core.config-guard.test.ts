@@ -1,4 +1,5 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearAllPlannedGatewayRestarts } from "../../infra/planned-gateway-restart.js";
 import {
   defaultRuntime,
   resetLifecycleRuntimeLogs,
@@ -70,6 +71,10 @@ describe("runServiceRestart config pre-flight (#35862)", () => {
     loadConfig.mockReturnValue({});
     resetLifecycleServiceMocks();
     stubEmptyGatewayEnv();
+  });
+
+  afterEach(() => {
+    clearAllPlannedGatewayRestarts();
   });
 
   it("aborts restart when config is invalid", async () => {

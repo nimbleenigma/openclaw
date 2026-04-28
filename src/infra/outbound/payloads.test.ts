@@ -6,6 +6,7 @@ import { typedCases } from "../../test-utils/typed-cases.js";
 import {
   PLANNED_GATEWAY_RESTART_FALLBACK_TEXT,
   clearAllPlannedGatewayRestarts,
+  markGlobalPlannedGatewayRestart,
   markPlannedGatewayRestart,
 } from "../planned-gateway-restart.js";
 import {
@@ -245,6 +246,35 @@ describe("normalizeReplyPayloadsForDelivery", () => {
         createOutboundPayloadPlan([{ text: "NO_REPLY" }], {
           cfg,
           sessionKey,
+          surface: "telegram",
+        }),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        text: PLANNED_GATEWAY_RESTART_FALLBACK_TEXT,
+      }),
+    ]);
+  });
+
+  it("uses restart-aware text for direct silent replies during global planned gateway restarts", () => {
+    const cfg: OpenClawConfig = {
+      agents: {
+        defaults: {
+          silentReply: {
+            direct: "disallow",
+            group: "allow",
+            internal: "allow",
+          },
+        },
+      },
+    };
+    markGlobalPlannedGatewayRestart();
+
+    expect(
+      projectOutboundPayloadPlanForDelivery(
+        createOutboundPayloadPlan([{ text: "NO_REPLY" }], {
+          cfg,
+          conversationType: "direct",
           surface: "telegram",
         }),
       ),

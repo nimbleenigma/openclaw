@@ -175,9 +175,11 @@ OpenClaw resolves that behavior by conversation type:
 - Groups/channels allow silence by default.
 - Internal orchestration allows silence by default.
 
-During a planned, session-scoped gateway restart, direct-chat silent fallback
-uses restart-aware status text instead of generic filler so brief rebuild or
-restart gaps do not look like ordinary task completion.
+During a planned gateway restart, direct-chat silent fallback uses restart-aware
+status text instead of generic filler so brief rebuild or restart gaps do not
+look like ordinary task completion. Session-scoped restart markers take
+precedence; CLI or service-manager restarts can use a short-lived global marker
+when no session key exists.
 
 OpenClaw also uses silent replies for internal runner failures that happen
 before any assistant reply in non-direct chats, so groups/channels do not see

@@ -11,6 +11,10 @@ import { renderSystemdUnavailableHints } from "../../daemon/systemd-hints.js";
 import { isSystemdUserServiceAvailable } from "../../daemon/systemd.js";
 import { isGatewaySecretRefUnavailableError } from "../../gateway/credentials.js";
 import {
+  clearGlobalPlannedGatewayRestart,
+  markGlobalPlannedGatewayRestart,
+} from "../../infra/planned-gateway-restart.js";
+import {
   clearGatewayRestartIntentSync,
   writeGatewayRestartIntentSync,
 } from "../../infra/restart.js";
@@ -399,6 +403,21 @@ export async function runServiceRestart(params: {
   const warnings: string[] = [];
   let handledRecovery: ServiceRecoveryResult | null = null;
   let recoveredLoadedState: boolean | null = null;
+  let markedGlobalPlannedRestart = false;
+  const markGlobalRestartIfGateway = () => {
+    if (markedGlobalPlannedRestart || params.serviceNoun !== "Gateway") {
+      return;
+    }
+    markGlobalPlannedGatewayRestart();
+    markedGlobalPlannedRestart = true;
+  };
+  const clearGlobalRestartIfMarked = () => {
+    if (!markedGlobalPlannedRestart) {
+      return;
+    }
+    clearGlobalPlannedGatewayRestart();
+    markedGlobalPlannedRestart = false;
+  };
   const emitScheduledRestart = (
     restartStatus: ReturnType<typeof describeGatewayServiceRestart>,
     serviceLoaded: boolean,
@@ -443,12 +462,15 @@ export async function runServiceRestart(params: {
 
   if (!loaded) {
     try {
+      markGlobalRestartIfGateway();
       handledRecovery = (await params.onNotLoaded?.({ json, stdout, fail })) ?? null;
     } catch (err) {
+      clearGlobalRestartIfMarked();
       fail(`${params.serviceNoun} restart failed: ${String(err)}`);
       return false;
     }
     if (!handledRecovery) {
+      clearGlobalRestartIfMarked();
       await handleServiceNotLoaded({
         serviceNoun: params.serviceNoun,
         service: params.service,
@@ -511,9 +533,11 @@ export async function runServiceRestart(params: {
           targetPid: runtime?.pid,
         });
       }
+      markGlobalRestartIfGateway();
       try {
         restartResult = await params.service.restart({ env: process.env, stdout });
       } catch (err) {
+        clearGlobalRestartIfMarked();
         if (wroteRestartIntent) {
           clearGatewayRestartIntentSync();
         }
@@ -555,6 +579,7 @@ export async function runServiceRestart(params: {
     }
     return true;
   } catch (err) {
+    clearGlobalRestartIfMarked();
     const hints = params.renderStartHints();
     fail(`${params.serviceNoun} restart failed: ${String(err)}`, hints);
     return false;

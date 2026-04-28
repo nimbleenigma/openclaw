@@ -6,6 +6,7 @@ export const PLANNED_GATEWAY_RESTART_FALLBACK_TEXT =
 const DEFAULT_PLANNED_GATEWAY_RESTART_TTL_MS = 120_000;
 
 const plannedRestartExpiresAtBySessionKey = new Map<string, number>();
+let globalPlannedRestartExpiresAt: number | undefined;
 
 function normalizeSessionKey(sessionKey: string | undefined): string | undefined {
   const normalized = sessionKey?.trim();
@@ -31,6 +32,15 @@ function pruneExpiredPlannedGatewayRestarts(nowMs: number) {
       plannedRestartExpiresAtBySessionKey.delete(sessionKey);
     }
   }
+  if (globalPlannedRestartExpiresAt !== undefined && globalPlannedRestartExpiresAt <= nowMs) {
+    globalPlannedRestartExpiresAt = undefined;
+  }
+}
+
+function resolvePlannedGatewayRestartTtlMs(ttlMs: number | undefined): number {
+  return typeof ttlMs === "number" && Number.isFinite(ttlMs) && ttlMs > 0
+    ? Math.floor(ttlMs)
+    : DEFAULT_PLANNED_GATEWAY_RESTART_TTL_MS;
 }
 
 export function markPlannedGatewayRestart(params: {
@@ -43,15 +53,17 @@ export function markPlannedGatewayRestart(params: {
     return false;
   }
   const nowMs = params.nowMs ?? Date.now();
-  const ttlMs =
-    typeof params.ttlMs === "number" && Number.isFinite(params.ttlMs) && params.ttlMs > 0
-      ? Math.floor(params.ttlMs)
-      : DEFAULT_PLANNED_GATEWAY_RESTART_TTL_MS;
+  const ttlMs = resolvePlannedGatewayRestartTtlMs(params.ttlMs);
   const expiresAt = nowMs + ttlMs;
   for (const key of keys) {
     plannedRestartExpiresAtBySessionKey.set(key, expiresAt);
   }
   return true;
+}
+
+export function markGlobalPlannedGatewayRestart(params: { nowMs?: number; ttlMs?: number } = {}) {
+  const nowMs = params.nowMs ?? Date.now();
+  globalPlannedRestartExpiresAt = nowMs + resolvePlannedGatewayRestartTtlMs(params.ttlMs);
 }
 
 export function clearPlannedGatewayRestart(params: { sessionKey?: string }) {
@@ -60,8 +72,13 @@ export function clearPlannedGatewayRestart(params: { sessionKey?: string }) {
   }
 }
 
+export function clearGlobalPlannedGatewayRestart() {
+  globalPlannedRestartExpiresAt = undefined;
+}
+
 export function clearAllPlannedGatewayRestarts() {
   plannedRestartExpiresAtBySessionKey.clear();
+  clearGlobalPlannedGatewayRestart();
 }
 
 export function resolvePlannedGatewayRestartFallbackText(params: {
@@ -70,11 +87,17 @@ export function resolvePlannedGatewayRestartFallbackText(params: {
 }): string | undefined {
   const nowMs = params.nowMs ?? Date.now();
   pruneExpiredPlannedGatewayRestarts(nowMs);
-  return resolveSessionLookupKeys(params.sessionKey).some((key) =>
-    plannedRestartExpiresAtBySessionKey.has(key),
-  )
-    ? PLANNED_GATEWAY_RESTART_FALLBACK_TEXT
-    : undefined;
+  if (
+    resolveSessionLookupKeys(params.sessionKey).some((key) =>
+      plannedRestartExpiresAtBySessionKey.has(key),
+    )
+  ) {
+    return PLANNED_GATEWAY_RESTART_FALLBACK_TEXT;
+  }
+  if (globalPlannedRestartExpiresAt !== undefined) {
+    return PLANNED_GATEWAY_RESTART_FALLBACK_TEXT;
+  }
+  return undefined;
 }
 
 export function resolveRestartAwareSilentReplyRewriteText(params: {

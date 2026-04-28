@@ -3,6 +3,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
   PLANNED_GATEWAY_RESTART_FALLBACK_TEXT,
   clearAllPlannedGatewayRestarts,
+  markGlobalPlannedGatewayRestart,
   markPlannedGatewayRestart,
 } from "../../infra/planned-gateway-restart.js";
 import { HEARTBEAT_TOKEN, SILENT_REPLY_TOKEN } from "../tokens.js";
@@ -86,6 +87,39 @@ describe("createReplyDispatcher", () => {
       silentReplyContext: {
         cfg,
         sessionKey,
+        surface: "telegram",
+      },
+    });
+
+    expect(dispatcher.sendFinalReply({ text: SILENT_REPLY_TOKEN })).toBe(true);
+
+    await dispatcher.waitForIdle();
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(deliver.mock.calls[0]?.[0]?.text).toBe(PLANNED_GATEWAY_RESTART_FALLBACK_TEXT);
+  });
+
+  it("prefers restart-aware fallback text during global planned gateway restarts", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const cfg: OpenClawConfig = {
+      agents: {
+        defaults: {
+          silentReply: {
+            direct: "disallow",
+            group: "allow",
+            internal: "allow",
+          },
+          silentReplyRewrite: {
+            direct: true,
+          },
+        },
+      },
+    };
+    markGlobalPlannedGatewayRestart();
+    const dispatcher = createReplyDispatcher({
+      deliver,
+      silentReplyContext: {
+        cfg,
+        conversationType: "direct",
         surface: "telegram",
       },
     });

@@ -1,5 +1,10 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/config.js";
+import {
+  PLANNED_GATEWAY_RESTART_FALLBACK_TEXT,
+  clearAllPlannedGatewayRestarts,
+  resolvePlannedGatewayRestartFallbackText,
+} from "../../infra/planned-gateway-restart.js";
 import {
   defaultRuntime,
   resetLifecycleRuntimeLogs,
@@ -107,6 +112,10 @@ describe("runServiceRestart token drift", () => {
       environment: { OPENCLAW_GATEWAY_TOKEN: "service-token" },
     });
     stubEmptyGatewayEnv();
+  });
+
+  afterEach(() => {
+    clearAllPlannedGatewayRestarts();
   });
 
   it("prints the container restart hint when restart is requested for a not-loaded service", async () => {
@@ -326,6 +335,21 @@ describe("runServiceRestart token drift", () => {
     expect(service.restart).toHaveBeenCalledTimes(1);
   });
 
+  it("marks a global planned restart before service-manager restart", async () => {
+    service.restart.mockImplementationOnce(async () => {
+      expect(resolvePlannedGatewayRestartFallbackText({})).toBe(
+        PLANNED_GATEWAY_RESTART_FALLBACK_TEXT,
+      );
+      return { outcome: "completed" };
+    });
+
+    await runServiceRestart(createServiceRunArgs());
+
+    expect(resolvePlannedGatewayRestartFallbackText({})).toBe(
+      PLANNED_GATEWAY_RESTART_FALLBACK_TEXT,
+    );
+  });
+
   it("clears restart intent when service-manager restart fails before signaling", async () => {
     service.readRuntime.mockResolvedValue({ status: "running", pid: 1234 });
     writeGatewayRestartIntentSync.mockReturnValueOnce(true);
@@ -335,6 +359,35 @@ describe("runServiceRestart token drift", () => {
 
     expect(writeGatewayRestartIntentSync).toHaveBeenCalledWith({ targetPid: 1234 });
     expect(clearGatewayRestartIntentSync).toHaveBeenCalledOnce();
+  });
+
+  it("clears global planned restart when service-manager restart fails before signaling", async () => {
+    service.restart.mockRejectedValueOnce(new Error("launchctl failed before signaling"));
+
+    await expect(runServiceRestart(createServiceRunArgs())).rejects.toThrow("__exit__:1");
+
+    expect(resolvePlannedGatewayRestartFallbackText({})).toBeUndefined();
+  });
+
+  it("marks a global planned restart before not-loaded restart recovery", async () => {
+    service.isLoaded.mockResolvedValue(false);
+
+    await runServiceRestart({
+      serviceNoun: "Gateway",
+      service,
+      renderStartHints: () => [],
+      opts: { json: true },
+      onNotLoaded: async () => {
+        expect(resolvePlannedGatewayRestartFallbackText({})).toBe(
+          PLANNED_GATEWAY_RESTART_FALLBACK_TEXT,
+        );
+        return { result: "restarted", loaded: true };
+      },
+    });
+
+    expect(resolvePlannedGatewayRestartFallbackText({})).toBe(
+      PLANNED_GATEWAY_RESTART_FALLBACK_TEXT,
+    );
   });
 
   it("emits scheduled when service start routes through a scheduled restart", async () => {

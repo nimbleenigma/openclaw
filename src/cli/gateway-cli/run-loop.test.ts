@@ -8,6 +8,7 @@ const acquireGatewayLock = vi.fn(async (_opts?: { port?: number }) => ({
 const consumeGatewaySigusr1RestartAuthorization = vi.fn(() => true);
 const consumeGatewayRestartIntentSync = vi.fn(() => false);
 const isGatewaySigusr1RestartExternallyAllowed = vi.fn(() => false);
+const markGlobalPlannedGatewayRestart = vi.fn();
 const markGatewaySigusr1RestartHandled = vi.fn();
 const peekGatewaySigusr1RestartReason = vi.fn<() => string | undefined>(() => undefined);
 const resetGatewayRestartStateForInProcessRestart = vi.fn();
@@ -76,6 +77,10 @@ vi.mock("../../infra/restart.js", () => ({
   resetGatewayRestartStateForInProcessRestart: () => resetGatewayRestartStateForInProcessRestart(),
   scheduleGatewaySigusr1Restart: (opts?: { delayMs?: number; reason?: string }) =>
     scheduleGatewaySigusr1Restart(opts),
+}));
+
+vi.mock("../../infra/planned-gateway-restart.js", () => ({
+  markGlobalPlannedGatewayRestart: () => markGlobalPlannedGatewayRestart(),
 }));
 
 vi.mock("../../infra/process-respawn.js", () => ({
@@ -303,6 +308,7 @@ describe("runGatewayLoop", () => {
       await new Promise<void>((resolve) => setImmediate(resolve));
 
       expect(consumeGatewayRestartIntentSync).toHaveBeenCalledOnce();
+      expect(markGlobalPlannedGatewayRestart).toHaveBeenCalledOnce();
       expect(markGatewayDraining).toHaveBeenCalledOnce();
       expect(waitForActiveTasks).toHaveBeenCalledWith(90_000);
       expect(closeFirst).toHaveBeenCalledWith({
@@ -454,6 +460,7 @@ describe("runGatewayLoop", () => {
         delayMs: 0,
         reason: "SIGUSR1",
       });
+      expect(markGlobalPlannedGatewayRestart).toHaveBeenCalledOnce();
       expect(close).not.toHaveBeenCalled();
       expect(start).toHaveBeenCalledTimes(1);
       expect(markGatewaySigusr1RestartHandled).not.toHaveBeenCalled();

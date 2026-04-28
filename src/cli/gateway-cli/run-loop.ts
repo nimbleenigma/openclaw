@@ -18,6 +18,7 @@ type RestartDrainTimeoutMs = number | undefined;
 type EmbeddedRunsModule = typeof import("../../agents/pi-embedded-runner/runs.js");
 type RuntimeConfigModule = typeof import("../../config/config.js");
 type ProcessRespawnModule = typeof import("../../infra/process-respawn.js");
+type PlannedGatewayRestartModule = typeof import("../../infra/planned-gateway-restart.js");
 type RestartSentinelModule = typeof import("../../infra/restart-sentinel.js");
 type RestartModule = typeof import("../../infra/restart.js");
 type SupervisorMarkersModule = typeof import("../../infra/supervisor-markers.js");
@@ -31,6 +32,7 @@ type RuntimeInternalModule = typeof import("../../tasks/runtime-internal.js");
 let embeddedRunsModule: Promise<EmbeddedRunsModule> | undefined;
 let runtimeConfigModule: Promise<RuntimeConfigModule> | undefined;
 let processRespawnModule: Promise<ProcessRespawnModule> | undefined;
+let plannedGatewayRestartModule: Promise<PlannedGatewayRestartModule> | undefined;
 let restartSentinelModule: Promise<RestartSentinelModule> | undefined;
 let restartModule: Promise<RestartModule> | undefined;
 let supervisorMarkersModule: Promise<SupervisorMarkersModule> | undefined;
@@ -44,6 +46,8 @@ const loadEmbeddedRunsModule = () =>
 const loadRuntimeConfigModule = () => (runtimeConfigModule ??= import("../../config/config.js"));
 const loadProcessRespawnModule = () =>
   (processRespawnModule ??= import("../../infra/process-respawn.js"));
+const loadPlannedGatewayRestartModule = () =>
+  (plannedGatewayRestartModule ??= import("../../infra/planned-gateway-restart.js"));
 const loadRestartSentinelModule = () =>
   (restartSentinelModule ??= import("../../infra/restart-sentinel.js"));
 const loadRestartModule = () => (restartModule ??= import("../../infra/restart.js"));
@@ -429,7 +433,12 @@ export async function runGatewayLoop(params: {
     gatewayLog.info("signal SIGTERM received");
     void (async () => {
       const { consumeGatewayRestartIntentSync } = await loadRestartModule();
-      request(consumeGatewayRestartIntentSync() ? "restart" : "stop", "SIGTERM");
+      const isPlannedRestart = consumeGatewayRestartIntentSync();
+      if (isPlannedRestart) {
+        const { markGlobalPlannedGatewayRestart } = await loadPlannedGatewayRestartModule();
+        markGlobalPlannedGatewayRestart();
+      }
+      request(isPlannedRestart ? "restart" : "stop", "SIGTERM");
     })();
   };
   const onSigint = () => {
@@ -460,6 +469,8 @@ export async function runGatewayLoop(params: {
         }
         // External SIGUSR1 requests should still reuse the in-process restart
         // scheduler so idle drain and restart coalescing stay consistent.
+        const { markGlobalPlannedGatewayRestart } = await loadPlannedGatewayRestartModule();
+        markGlobalPlannedGatewayRestart();
         scheduleGatewaySigusr1Restart({ delayMs: 0, reason: "SIGUSR1" });
         return;
       }
