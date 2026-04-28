@@ -649,7 +649,7 @@ export const registerTelegramNativeCommands = ({
     );
   }
   if (descriptionTrimmed) {
-    runtime.log?.(
+    logVerbose(
       `Telegram menu text exceeded the conservative ${maxTotalChars}-character payload budget; shortening descriptions to keep ${commandsToRegister.length} commands visible.`,
     );
   }
