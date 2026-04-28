@@ -162,7 +162,6 @@ describe("matrixApprovalNativeRuntime", () => {
       plannedTarget: buildMatrixApprovalRoomTarget("!room:example.org"),
       request: {} as never,
       approvalKind: "exec",
-      view: {} as never,
       preparedTarget: {
         to: "room:!room:example.org",
         roomId: "!room:example.org",
@@ -304,7 +303,6 @@ describe("matrixApprovalNativeRuntime", () => {
       plannedTarget: buildMatrixApprovalRoomTarget("!room:example.org"),
       request: {} as never,
       approvalKind: "exec",
-      view: {} as never,
       preparedTarget: {
         to: "room:!room:example.org",
         roomId: "!room:example.org",
