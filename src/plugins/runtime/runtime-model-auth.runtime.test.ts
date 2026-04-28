@@ -39,6 +39,7 @@ describe("runtime-model-auth.runtime", () => {
   });
 
   it("returns provider-prepared runtime auth when the provider transforms credentials", async () => {
+    const cfg = { auth: { order: { "github-copilot": ["github-copilot:github"] } } };
     hoisted.getApiKeyForModel.mockResolvedValue({
       apiKey: "github-device-token",
       source: "profile:github-copilot:github",
@@ -54,6 +55,11 @@ describe("runtime-model-auth.runtime", () => {
     await expect(
       getRuntimeAuthForModel({
         model: MODEL as never,
+        cfg: cfg as never,
+        agentDir: "/tmp/openclaw-agent",
+        workspaceDir: "/tmp/openclaw-workspace",
+        profileId: "github-copilot:github",
+        preferredProfile: "github-copilot:github",
       }),
     ).resolves.toEqual({
       apiKey: "copilot-bearer-token",
@@ -63,13 +69,25 @@ describe("runtime-model-auth.runtime", () => {
       baseUrl: "https://api.individual.githubcopilot.com",
       expiresAt: 123,
     });
+    expect(hoisted.getApiKeyForModel).toHaveBeenCalledWith({
+      model: MODEL,
+      cfg,
+      agentDir: "/tmp/openclaw-agent",
+      profileId: "github-copilot:github",
+      preferredProfile: "github-copilot:github",
+    });
     expect(hoisted.prepareProviderRuntimeAuth).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: "github-copilot",
+        config: cfg,
+        workspaceDir: "/tmp/openclaw-workspace",
         context: expect.objectContaining({
+          agentDir: "/tmp/openclaw-agent",
+          workspaceDir: "/tmp/openclaw-workspace",
           apiKey: "github-device-token",
           modelId: "github-copilot/gpt-4o",
           provider: "github-copilot",
+          profileId: "github-copilot:github",
         }),
       }),
     );

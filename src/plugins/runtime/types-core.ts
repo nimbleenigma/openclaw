@@ -61,6 +61,23 @@ export type PluginRuntimeThinkingPolicy = {
   defaultLevel?: import("../../auto-reply/thinking.js").ThinkLevel | null;
 };
 
+type RuntimeModelAuthScope = {
+  cfg?: import("../../config/types.openclaw.js").OpenClawConfig;
+  profileId?: string;
+  preferredProfile?: string;
+  agentDir?: string;
+};
+type RuntimeModelAuthModel = import("@mariozechner/pi-ai").Model<import("@mariozechner/pi-ai").Api>;
+type RuntimeModelAuthParams = RuntimeModelAuthScope & {
+  model: RuntimeModelAuthModel;
+};
+type RuntimeModelRuntimeAuthParams = RuntimeModelAuthParams & {
+  workspaceDir?: string;
+};
+type RuntimeProviderAuthParams = RuntimeModelAuthScope & {
+  provider: string;
+};
+
 /** Structured logger surface injected into runtime-backed plugin helpers. */
 export type RuntimeLogger = {
   debug?: (message: string, meta?: Record<string, unknown>) => void;
@@ -248,21 +265,23 @@ export type PluginRuntimeCore = {
   /** @deprecated Use runtime.tasks.flows for DTO-based TaskFlow access. */
   taskFlow: import("./runtime-taskflow.types.js").PluginRuntimeTaskFlow;
   modelAuth: {
-    /** Resolve auth for a model. Only provider/model and optional cfg are used. */
-    getApiKeyForModel: (params: {
-      model: import("@mariozechner/pi-ai").Model<import("@mariozechner/pi-ai").Api>;
-      cfg?: import("../../config/types.openclaw.js").OpenClawConfig;
-    }) => Promise<import("../../agents/model-auth-runtime-shared.js").ResolvedProviderAuth>;
+    /**
+     * Resolve auth for a model. Callers may scope lookup to an agent/profile;
+     * raw auth stores are intentionally not accepted by this runtime facade.
+     */
+    getApiKeyForModel: (
+      params: RuntimeModelAuthParams,
+    ) => Promise<import("../../agents/model-auth-runtime-shared.js").ResolvedProviderAuth>;
     /** Resolve request-ready auth for a model, including provider runtime exchanges. */
-    getRuntimeAuthForModel: (params: {
-      model: import("@mariozechner/pi-ai").Model<import("@mariozechner/pi-ai").Api>;
-      cfg?: import("../../config/types.openclaw.js").OpenClawConfig;
-      workspaceDir?: string;
-    }) => Promise<import("./model-auth-types.js").ResolvedProviderRuntimeAuth>;
-    /** Resolve auth for a provider by name. Only provider and optional cfg are used. */
-    resolveApiKeyForProvider: (params: {
-      provider: string;
-      cfg?: import("../../config/types.openclaw.js").OpenClawConfig;
-    }) => Promise<import("../../agents/model-auth-runtime-shared.js").ResolvedProviderAuth>;
+    getRuntimeAuthForModel: (
+      params: RuntimeModelRuntimeAuthParams,
+    ) => Promise<import("./model-auth-types.js").ResolvedProviderRuntimeAuth>;
+    /**
+     * Resolve auth for a provider by name. Callers may scope lookup to an
+     * agent/profile; raw auth stores are intentionally not accepted here.
+     */
+    resolveApiKeyForProvider: (
+      params: RuntimeProviderAuthParams,
+    ) => Promise<import("../../agents/model-auth-runtime-shared.js").ResolvedProviderAuth>;
   };
 };

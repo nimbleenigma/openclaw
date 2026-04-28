@@ -12,6 +12,32 @@ import {
   setGatewaySubagentRuntime,
 } from "./index.js";
 
+const runtimeModelAuthMocks = vi.hoisted(() => ({
+  getApiKeyForModel: vi.fn(),
+  getRuntimeAuthForModel: vi.fn(),
+  resolveApiKeyForProvider: vi.fn(),
+}));
+
+vi.mock("./runtime-model-auth.runtime.js", () => ({
+  getApiKeyForModel: runtimeModelAuthMocks.getApiKeyForModel,
+  getRuntimeAuthForModel: runtimeModelAuthMocks.getRuntimeAuthForModel,
+  resolveApiKeyForProvider: runtimeModelAuthMocks.resolveApiKeyForProvider,
+}));
+
+const MODEL_AUTH_TEST_MODEL = {
+  id: "openai-codex/gpt-5.5",
+  provider: "openai-codex",
+  api: "openai-codex-responses",
+  name: "gpt-5.5",
+  input: ["text"],
+  cost: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+  },
+};
+
 function createCommandResult() {
   return {
     pid: 12345,
@@ -102,6 +128,9 @@ function expectRunCommandOutcome(params: {
 describe("plugin runtime command execution", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    runtimeModelAuthMocks.getApiKeyForModel.mockReset();
+    runtimeModelAuthMocks.getRuntimeAuthForModel.mockReset();
+    runtimeModelAuthMocks.resolveApiKeyForProvider.mockReset();
     clearGatewaySubagentRuntime();
   });
 
@@ -247,14 +276,80 @@ describe("plugin runtime command execution", () => {
     expectRuntimeShape(assert);
   });
 
-  it("modelAuth wrappers strip agentDir and store to prevent credential steering", async () => {
-    // The wrappers should not forward agentDir or store from plugin callers.
-    // We verify this by checking the wrapper functions exist and are not the
-    // raw implementations (they are wrapped, not direct references).
+  it("modelAuth wrappers are scoped facades, not direct model-auth exports", async () => {
     const { getApiKeyForModel: rawGetApiKey } = await import("../../agents/model-auth.js");
     const runtime = createPluginRuntime();
-    // Wrappers should NOT be the same reference as the raw functions
     expect(runtime.modelAuth.getApiKeyForModel).not.toBe(rawGetApiKey);
+  });
+
+  it("modelAuth wrappers forward auth scope while dropping caller-supplied stores", async () => {
+    runtimeModelAuthMocks.getApiKeyForModel.mockResolvedValue({
+      apiKey: "model-key",
+      source: "profile:openai-codex:fresh",
+      mode: "oauth",
+      profileId: "openai-codex:fresh",
+    });
+    runtimeModelAuthMocks.getRuntimeAuthForModel.mockResolvedValue({
+      apiKey: "runtime-key",
+      source: "profile:openai-codex:fresh",
+      mode: "oauth",
+      profileId: "openai-codex:fresh",
+    });
+    runtimeModelAuthMocks.resolveApiKeyForProvider.mockResolvedValue({
+      apiKey: "provider-key",
+      source: "profile:openai-codex:fresh",
+      mode: "oauth",
+      profileId: "openai-codex:fresh",
+    });
+    const runtime = createPluginRuntime();
+    const cfg = { auth: { order: { "openai-codex": ["openai-codex:fresh"] } } };
+    const scopedParams = {
+      model: MODEL_AUTH_TEST_MODEL,
+      cfg,
+      profileId: "openai-codex:fresh",
+      preferredProfile: "openai-codex:fresh",
+      agentDir: "/tmp/openclaw-agent",
+      store: { profiles: {} },
+    };
+
+    await runtime.modelAuth.getApiKeyForModel(
+      scopedParams as unknown as Parameters<typeof runtime.modelAuth.getApiKeyForModel>[0],
+    );
+    await runtime.modelAuth.getRuntimeAuthForModel({
+      ...scopedParams,
+      workspaceDir: "/tmp/openclaw-workspace",
+    } as unknown as Parameters<typeof runtime.modelAuth.getRuntimeAuthForModel>[0]);
+    await runtime.modelAuth.resolveApiKeyForProvider({
+      provider: "openai-codex",
+      cfg,
+      profileId: "openai-codex:fresh",
+      preferredProfile: "openai-codex:fresh",
+      agentDir: "/tmp/openclaw-agent",
+      store: { profiles: {} },
+    } as unknown as Parameters<typeof runtime.modelAuth.resolveApiKeyForProvider>[0]);
+
+    expect(runtimeModelAuthMocks.getApiKeyForModel).toHaveBeenCalledWith({
+      model: MODEL_AUTH_TEST_MODEL,
+      cfg,
+      profileId: "openai-codex:fresh",
+      preferredProfile: "openai-codex:fresh",
+      agentDir: "/tmp/openclaw-agent",
+    });
+    expect(runtimeModelAuthMocks.getRuntimeAuthForModel).toHaveBeenCalledWith({
+      model: MODEL_AUTH_TEST_MODEL,
+      cfg,
+      workspaceDir: "/tmp/openclaw-workspace",
+      profileId: "openai-codex:fresh",
+      preferredProfile: "openai-codex:fresh",
+      agentDir: "/tmp/openclaw-agent",
+    });
+    expect(runtimeModelAuthMocks.resolveApiKeyForProvider).toHaveBeenCalledWith({
+      provider: "openai-codex",
+      cfg,
+      profileId: "openai-codex:fresh",
+      preferredProfile: "openai-codex:fresh",
+      agentDir: "/tmp/openclaw-agent",
+    });
   });
 
   it("keeps subagent unavailable by default even after gateway initialization", async () => {
