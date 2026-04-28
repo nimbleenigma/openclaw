@@ -94,10 +94,57 @@ describe("auditGatewayServiceConfig", () => {
     ).toBe(true);
     expect(
       audit.issues.some((issue) => issue.code === SERVICE_AUDIT_CODES.gatewayPathNonMinimal),
-    ).toBe(true);
-    expect(
-      audit.issues.some((issue) => issue.code === SERVICE_AUDIT_CODES.gatewayPathMissingDirs),
-    ).toBe(true);
+    ).toBe(false);
+    const missingIssue = audit.issues.find(
+      (issue) => issue.code === SERVICE_AUDIT_CODES.gatewayPathMissingDirs,
+    );
+    expect(missingIssue?.message).toContain("required/minimal dirs");
+  });
+
+  it("accepts Darwin minimal PATH without optional toolchain dirs", async () => {
+    const servicePath =
+      "/opt/homebrew/opt/node/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/test/.local/bin:/Users/test/.npm-global/bin:/Users/test/bin";
+    const audit = await auditGatewayServiceConfig({
+      env: { HOME: "/Users/test" },
+      platform: "darwin",
+      command: {
+        programArguments: ["/opt/homebrew/opt/node/bin/node", "gateway"],
+        environment: { PATH: servicePath },
+      },
+    });
+
+    expect(hasIssue(audit, SERVICE_AUDIT_CODES.gatewayPathMissingDirs)).toBe(false);
+    expect(hasIssue(audit, SERVICE_AUDIT_CODES.gatewayPathNonMinimal)).toBe(false);
+  });
+
+  it("warns when optional toolchain dirs are present in Darwin service PATH", async () => {
+    const minimalPath =
+      "/opt/homebrew/opt/node/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/test/.local/bin:/Users/test/.npm-global/bin:/Users/test/bin";
+    const servicePath = [
+      minimalPath,
+      "/Users/test/.bun/bin",
+      "/Users/test/.nix-profile/bin",
+      "/Users/test/Library/pnpm",
+      "/Users/test/.local/share/pnpm",
+    ].join(":");
+    const audit = await auditGatewayServiceConfig({
+      env: { HOME: "/Users/test" },
+      platform: "darwin",
+      command: {
+        programArguments: ["/opt/homebrew/opt/node/bin/node", "gateway"],
+        environment: { PATH: servicePath },
+      },
+    });
+
+    expect(hasIssue(audit, SERVICE_AUDIT_CODES.gatewayPathMissingDirs)).toBe(false);
+    const nonMinimalIssue = audit.issues.find(
+      (issue) => issue.code === SERVICE_AUDIT_CODES.gatewayPathNonMinimal,
+    );
+    expect(nonMinimalIssue?.message).toContain("optional toolchain/package-manager dirs");
+    expect(nonMinimalIssue?.detail).toContain("/Users/test/.bun/bin");
+    expect(nonMinimalIssue?.detail).toContain("/Users/test/.nix-profile/bin");
+    expect(nonMinimalIssue?.detail).toContain("/Users/test/Library/pnpm");
+    expect(nonMinimalIssue?.detail).toContain("/Users/test/.local/share/pnpm");
   });
 
   it("accepts Linux minimal PATH with user directories", async () => {
@@ -142,26 +189,30 @@ describe("auditGatewayServiceConfig", () => {
     ).toBe(false);
   });
 
-  it("accepts Linux fnm current symlink without requiring aliases/default", async () => {
+  it("warns when unmanaged Linux fnm dirs are present", async () => {
     const env = {
       HOME: "/tmp/openclaw-testuser",
       FNM_DIR: "/tmp/openclaw-testuser/.local/share/fnm",
     };
-    const pathParts = buildMinimalServicePath({ platform: "linux", env })
-      .split(":")
-      .filter((entry) => !entry.includes("/fnm/aliases/default/bin"));
+    const servicePath = [
+      buildMinimalServicePath({ platform: "linux", env }),
+      "/tmp/openclaw-testuser/.local/share/fnm/current/bin",
+    ].join(":");
     const audit = await auditGatewayServiceConfig({
       env,
       platform: "linux",
       command: {
         programArguments: ["/usr/bin/node", "gateway"],
-        environment: { PATH: pathParts.join(":") },
+        environment: { PATH: servicePath },
       },
     });
 
     expect(
       audit.issues.some((issue) => issue.code === SERVICE_AUDIT_CODES.gatewayPathMissingDirs),
     ).toBe(false);
+    expect(
+      audit.issues.some((issue) => issue.code === SERVICE_AUDIT_CODES.gatewayPathNonMinimal),
+    ).toBe(true);
   });
 
   it("reads gateway service ports from split and equals-form arguments", () => {

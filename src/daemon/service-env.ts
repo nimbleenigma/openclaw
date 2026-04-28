@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -67,245 +66,49 @@ function readServiceProxyEnvironment(
   return proxyUrl ? { OPENCLAW_PROXY_URL: proxyUrl } : {};
 }
 
-function normalizeServicePathDir(dir: string | undefined): string | undefined {
-  const trimmed = dir?.trim();
-  // Service PATH snapshots are only emitted for macOS/Linux; keep POSIX semantics
-  // even when tests or helper callers run on Windows.
-  if (!trimmed || !path.posix.isAbsolute(trimmed)) {
-    return undefined;
-  }
-  return path.posix.normalize(trimmed);
-}
-
-function realpathServicePathDir(dir: string): string | undefined {
-  try {
-    return path.posix.normalize(fs.realpathSync.native(dir));
-  } catch {
-    return undefined;
-  }
-}
-
-function realpathExistingServicePathDir(dir: string): string | undefined {
-  const parts: string[] = [];
-  let current = dir;
-  while (current && current !== path.posix.dirname(current)) {
-    const realCurrent = realpathServicePathDir(current);
-    if (realCurrent) {
-      return path.posix.normalize(path.posix.join(realCurrent, ...parts.toReversed()));
-    }
-    parts.push(path.posix.basename(current));
-    current = path.posix.dirname(current);
-  }
-  const realRoot = realpathServicePathDir(current);
-  return realRoot
-    ? path.posix.normalize(path.posix.join(realRoot, ...parts.toReversed()))
-    : undefined;
-}
-
-function isSameOrChildPath(candidate: string, parent: string): boolean {
-  return candidate === parent || candidate.startsWith(`${parent}/`);
-}
-
-function isUnsafeProcPath(candidate: string): boolean {
-  return candidate === "/proc" || candidate.startsWith("/proc/");
-}
-
-function isWorkspaceDerivedPath(
-  dir: string,
-  options: Pick<MinimalServicePathOptions, "cwd" | "home">,
-): boolean {
-  // Install-time workspace env vars must not become durable service PATH entries.
-  if (isUnsafeProcPath(dir)) {
-    return true;
-  }
-  const cwd = normalizeServicePathDir(options.cwd ?? process.cwd());
-  if (!cwd) {
-    return false;
-  }
-  const home = normalizeServicePathDir(options.home);
-  if (home && cwd === home) {
-    return false;
-  }
-  if (isSameOrChildPath(dir, cwd)) {
-    return true;
-  }
-  const realDir = realpathExistingServicePathDir(dir);
-  const realCwd = realpathServicePathDir(cwd);
-  const realHome = home ? realpathServicePathDir(home) : undefined;
-  return Boolean(
-    realDir && realCwd && realHome !== realCwd && isSameOrChildPath(realDir, realCwd),
-  );
-}
-
-function addEnvConfiguredBinDir(
-  dirs: string[],
-  dir: string | undefined,
-  options: Pick<MinimalServicePathOptions, "cwd" | "home">,
-): void {
-  const normalized = normalizeServicePathDir(dir);
-  if (!normalized || isWorkspaceDerivedPath(normalized, options)) {
-    return;
-  }
-  dirs.push(normalized);
-}
-
-function appendSubdir(base: string | undefined, subdir: string): string | undefined {
-  if (!base) {
-    return undefined;
-  }
-  return base.endsWith(`/${subdir}`) ? base : path.posix.join(base, subdir);
-}
-
-function addExistingDir(
-  dirs: string[],
-  candidate: string,
-  existsSync: (candidate: string) => boolean,
-): void {
-  if (existsSync(candidate)) {
-    dirs.push(candidate);
-  }
-}
-
-function addCommonUserBinDirs(
-  dirs: string[],
-  home: string,
-  existsSync: (candidate: string) => boolean,
-): void {
+function addCommonUserBinDirs(dirs: string[], home: string): void {
   dirs.push(`${home}/.local/bin`);
   dirs.push(`${home}/.npm-global/bin`);
   dirs.push(`${home}/bin`);
-  addExistingDir(dirs, `${home}/.volta/bin`, existsSync);
-  addExistingDir(dirs, `${home}/.asdf/shims`, existsSync);
-  addExistingDir(dirs, `${home}/.bun/bin`, existsSync);
-}
-
-function addCommonEnvConfiguredBinDirs(
-  dirs: string[],
-  env: Record<string, string | undefined> | undefined,
-  options: Pick<MinimalServicePathOptions, "cwd" | "home">,
-): void {
-  addEnvConfiguredBinDir(dirs, env?.PNPM_HOME, options);
-  addEnvConfiguredBinDir(dirs, appendSubdir(env?.NPM_CONFIG_PREFIX, "bin"), options);
-  addEnvConfiguredBinDir(dirs, appendSubdir(env?.BUN_INSTALL, "bin"), options);
-  addEnvConfiguredBinDir(dirs, appendSubdir(env?.VOLTA_HOME, "bin"), options);
-  addEnvConfiguredBinDir(dirs, appendSubdir(env?.ASDF_DATA_DIR, "shims"), options);
-}
-
-// Nix shell precedence: rightmost profile in NIX_PROFILES = highest priority.
-// When NIX_PROFILES is absent, fall back to the default single-user profile.
-function addNixProfileBinDirs(
-  dirs: string[],
-  home: string,
-  env: Record<string, string | undefined> | undefined,
-  options: Pick<MinimalServicePathOptions, "cwd" | "home">,
-): void {
-  const nixProfiles = env?.NIX_PROFILES?.trim();
-  if (nixProfiles) {
-    for (const profile of nixProfiles.split(/\s+/).toReversed()) {
-      addEnvConfiguredBinDir(dirs, appendSubdir(profile, "bin"), options);
-    }
-  } else {
-    dirs.push(`${home}/.nix-profile/bin`);
-  }
 }
 
 function resolveSystemPathDirs(platform: NodeJS.Platform): string[] {
   if (platform === "darwin") {
-    return ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
+    return ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"];
   }
   if (platform === "linux") {
-    return ["/usr/local/bin", "/usr/bin", "/bin"];
+    return ["/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"];
   }
   return [];
 }
 
 /**
- * Resolve common user bin directories for macOS.
- * These are paths where npm global installs and node version managers typically place binaries.
- *
- * Key differences from Linux:
- * - fnm: macOS uses ~/Library/Application Support/fnm (not ~/.local/share/fnm)
- * - pnpm: macOS uses ~/Library/pnpm (not ~/.local/share/pnpm)
+ * Resolve stable personal bin directories for macOS.
+ * Toolchain/package-manager dirs are optional and should not be required by the
+ * service PATH unless a selected runtime explicitly adds them via extraDirs.
  */
-export function resolveDarwinUserBinDirs(
-  home: string | undefined,
-  env?: Record<string, string | undefined>,
-  existsSync: (candidate: string) => boolean = fs.existsSync,
-  options: Pick<MinimalServicePathOptions, "cwd" | "home"> = {},
-): string[] {
+export function resolveDarwinUserBinDirs(home: string | undefined): string[] {
   if (!home) {
     return [];
   }
 
   const dirs: string[] = [];
-  const pathOptions = { ...options, home };
-
-  // Env-configured bin roots (override defaults when present).
-  // Note: FNM_DIR on macOS defaults to ~/Library/Application Support/fnm
-  // Note: PNPM_HOME on macOS defaults to ~/Library/pnpm
-  addCommonEnvConfiguredBinDirs(dirs, env, pathOptions);
-  // nvm: no stable default path, relies on env or user's shell config
-  // User must set NVM_DIR and source nvm.sh for it to work
-  addEnvConfiguredBinDir(dirs, env?.NVM_DIR, pathOptions);
-  // fnm: use aliases/default (not current)
-  addEnvConfiguredBinDir(dirs, appendSubdir(env?.FNM_DIR, "aliases/default/bin"), pathOptions);
-  // pnpm: binary is directly in PNPM_HOME (not in bin subdirectory)
-
-  // Common user bin directories
-  addCommonUserBinDirs(dirs, home, existsSync);
-
-  // Nix Home Manager (cross-platform)
-  addNixProfileBinDirs(dirs, home, env, pathOptions);
-
-  // Node version managers - macOS specific paths
-  // nvm: no stable default path, depends on user's shell configuration
-  // fnm: macOS default is ~/Library/Application Support/fnm, not ~/.fnm
-  addExistingDir(dirs, `${home}/Library/Application Support/fnm/aliases/default/bin`, existsSync); // fnm default
-  addExistingDir(dirs, `${home}/.fnm/aliases/default/bin`, existsSync); // fnm if customized to ~/.fnm
-  // pnpm: macOS default is ~/Library/pnpm, not ~/.local/share/pnpm
-  addExistingDir(dirs, `${home}/Library/pnpm`, existsSync); // pnpm default
-  addExistingDir(dirs, `${home}/.local/share/pnpm`, existsSync); // pnpm XDG fallback
-
+  addCommonUserBinDirs(dirs, home);
   return dirs;
 }
 
 /**
- * Resolve common user bin directories for Linux.
- * These are paths where npm global installs and node version managers typically place binaries.
+ * Resolve stable personal bin directories for Linux.
+ * Toolchain/package-manager dirs are optional and should not be required by the
+ * service PATH unless a selected runtime explicitly adds them via extraDirs.
  */
-export function resolveLinuxUserBinDirs(
-  home: string | undefined,
-  env?: Record<string, string | undefined>,
-  existsSync: (candidate: string) => boolean = fs.existsSync,
-  options: Pick<MinimalServicePathOptions, "cwd" | "home"> = {},
-): string[] {
+export function resolveLinuxUserBinDirs(home: string | undefined): string[] {
   if (!home) {
     return [];
   }
 
   const dirs: string[] = [];
-  const pathOptions = { ...options, home };
-
-  // Env-configured bin roots (override defaults when present).
-  addCommonEnvConfiguredBinDirs(dirs, env, pathOptions);
-  addEnvConfiguredBinDir(dirs, appendSubdir(env?.NVM_DIR, "current/bin"), pathOptions);
-  addEnvConfiguredBinDir(dirs, appendSubdir(env?.FNM_DIR, "aliases/default/bin"), pathOptions);
-  addEnvConfiguredBinDir(dirs, appendSubdir(env?.FNM_DIR, "current/bin"), pathOptions);
-
-  // Common user bin directories
-  addCommonUserBinDirs(dirs, home, existsSync);
-
-  // Nix Home Manager (cross-platform)
-  addNixProfileBinDirs(dirs, home, env, pathOptions);
-
-  // Node version managers
-  addExistingDir(dirs, `${home}/.nvm/current/bin`, existsSync); // nvm with current symlink
-  addExistingDir(dirs, `${home}/.local/share/fnm/aliases/default/bin`, existsSync); // fnm default
-  addExistingDir(dirs, `${home}/.local/share/fnm/current/bin`, existsSync); // fnm legacy current symlink
-  addExistingDir(dirs, `${home}/.fnm/aliases/default/bin`, existsSync); // fnm if customized to ~/.fnm
-  addExistingDir(dirs, `${home}/.fnm/current/bin`, existsSync); // fnm legacy current symlink
-  addExistingDir(dirs, `${home}/.local/share/pnpm`, existsSync); // pnpm global bin
-
+  addCommonUserBinDirs(dirs, home);
   return dirs;
 }
 
@@ -319,13 +122,14 @@ export function getMinimalServicePathParts(options: MinimalServicePathOptions = 
   const extraDirs = options.extraDirs ?? [];
   const systemDirs = resolveSystemPathDirs(platform);
 
-  // Add user bin directories for version managers (npm global, nvm, fnm, volta, etc.)
-  const existsSync = options.existsSync ?? fs.existsSync;
+  // Add stable personal bin directories. Optional toolchain/package-manager
+  // dirs are intentionally excluded unless the selected runtime adds one via
+  // extraDirs.
   const userDirs =
     platform === "linux"
-      ? resolveLinuxUserBinDirs(options.home, options.env, existsSync, options)
+      ? resolveLinuxUserBinDirs(options.home)
       : platform === "darwin"
-        ? resolveDarwinUserBinDirs(options.home, options.env, existsSync, options)
+        ? resolveDarwinUserBinDirs(options.home)
         : [];
 
   const add = (dir: string) => {

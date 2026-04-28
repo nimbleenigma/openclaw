@@ -414,6 +414,41 @@ function getEquivalentMinimalPathEntries(
   return normalizedExpected.has(normalizedEquivalent) ? [equivalent] : [];
 }
 
+function collectManagedServicePathDirs(
+  command: GatewayServiceCommand,
+  platform: NodeJS.Platform,
+): string[] {
+  if (platform === "win32") {
+    return [];
+  }
+  const execPath = command?.programArguments?.[0]?.trim();
+  if (!execPath || !path.posix.isAbsolute(execPath)) {
+    return [];
+  }
+  return [path.posix.dirname(execPath)];
+}
+
+function isOptionalToolchainPath(entry: string): boolean {
+  return (
+    entry.includes("/.nvm/") ||
+    entry.includes("/.fnm/") ||
+    entry.includes("/.local/share/fnm/") ||
+    entry.includes("/Library/Application Support/fnm/") ||
+    entry.includes("/.volta/") ||
+    entry.includes("/.asdf/") ||
+    entry.includes("/.bun/") ||
+    entry.includes("/.nix-profile/") ||
+    entry.includes("/.n/") ||
+    entry.includes("/.nodenv/") ||
+    entry.includes("/.nodebrew/") ||
+    entry.includes("/nvs/") ||
+    entry.startsWith("/nix/var/nix/profiles/") ||
+    entry.includes("/.local/share/pnpm/") ||
+    entry.includes("/pnpm/") ||
+    entry.endsWith("/pnpm")
+  );
+}
+
 function auditGatewayServicePath(
   command: GatewayServiceCommand,
   issues: ServiceConfigIssue[],
@@ -433,7 +468,11 @@ function auditGatewayServicePath(
     return;
   }
 
-  const expected = getMinimalServicePathPartsFromEnv({ platform, env });
+  const expected = getMinimalServicePathPartsFromEnv({
+    platform,
+    env,
+    extraDirs: collectManagedServicePathDirs(command, platform),
+  });
   const parts = servicePath
     .split(getPathModule(platform).delimiter)
     .map((entry) => entry.trim())
@@ -452,7 +491,7 @@ function auditGatewayServicePath(
   if (missing.length > 0) {
     issues.push({
       code: SERVICE_AUDIT_CODES.gatewayPathMissingDirs,
-      message: `Gateway service PATH missing required dirs: ${missing.join(", ")}`,
+      message: `Gateway service PATH missing required/minimal dirs: ${missing.join(", ")}`,
       level: "recommended",
     });
   }
@@ -462,25 +501,13 @@ function auditGatewayServicePath(
     if (normalizedExpected.has(normalized)) {
       return false;
     }
-    return (
-      normalized.includes("/.nvm/") ||
-      normalized.includes("/.fnm/") ||
-      normalized.includes("/.volta/") ||
-      normalized.includes("/.asdf/") ||
-      normalized.includes("/.n/") ||
-      normalized.includes("/.nodenv/") ||
-      normalized.includes("/.nodebrew/") ||
-      normalized.includes("/nvs/") ||
-      normalized.includes("/.local/share/pnpm/") ||
-      normalized.includes("/pnpm/") ||
-      normalized.endsWith("/pnpm")
-    );
+    return isOptionalToolchainPath(normalized);
   });
   if (nonMinimal.length > 0) {
     issues.push({
       code: SERVICE_AUDIT_CODES.gatewayPathNonMinimal,
       message:
-        "Gateway service PATH includes version managers or package managers; recommend a minimal PATH.",
+        "Gateway service PATH includes optional toolchain/package-manager dirs; remove them unless the service runtime explicitly needs them.",
       detail: nonMinimal.join(", "),
       level: "recommended",
     });
